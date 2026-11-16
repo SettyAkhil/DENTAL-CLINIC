@@ -179,9 +179,18 @@ model ClinicalNote {
   notes                    String?      // 8. Notes
   advice                   String?      // 9. Advice
 
+  // Enhanced Clinical Examination Structure:
+  durationOfComplaint      String?
+  patientDescription       String?
+  clinicalFindings         Json?        // Array of { finding, toothNumber, severity, details, observations }
+  recommendedTreatments    Json?        // Array of { treatment, priority, advice, plannedDate, followUpDate }
+  followUpDate             DateTime?
+
   isLocked                 Boolean      @default(false)
   createdAt                DateTime     @default(now())
   updatedAt                DateTime     @updatedAt
+
+  procedures               Procedure[]
 
   @@index([patientId])
 }
@@ -218,9 +227,10 @@ model ProcedureMaster {
   id             String         @id @default(uuid())
   code           String         @unique
   name           String
-  specialization Specialization
+  category       String         @default("Consultation & Examination")
+  specialization Specialization @default(DENTAL)
   description    String?
-  standardCharge Float
+  standardCharge Float          @default(500.0)
   estimatedMins  Int            @default(60)
   isActive       Boolean        @default(true)
   createdAt      DateTime       @default(now())
@@ -245,6 +255,9 @@ model Procedure {
   charges            Float            @default(0.0)
   status             ProcedureStatus  @default(PLANNED)
   clinicalNotes      String?
+  clinicalNoteId     String?
+  clinicalNote       ClinicalNote?    @relation(fields: [clinicalNoteId], references: [id])
+  prescribedMedications Json?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 

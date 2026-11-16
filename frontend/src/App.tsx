@@ -68,6 +68,14 @@ export function App() {
     }
   };
 
+  const getTabTitle = (tab: string) => {
+    if (tab === 'operations' || tab === 'operations-examination') return 'Operations: Clinical Notes & Examination';
+    if (tab === 'operations-procedures') return 'Operations: Procedures & Treatments';
+    if (tab === 'operations-history') return 'Operations: Clinical & Treatment History';
+    if (tab === 'clinical-notes') return '9-Field Clinical Notes';
+    return tab.replace('-', ' ');
+  };
+
   if (!user) {
     return <LoginPage onLoginSuccess={(u) => setUser(u)} />;
   }
@@ -88,7 +96,7 @@ export function App() {
         <Header
           user={user}
           onQuickAction={handleQuickAction}
-          activeTabName={activeTab.replace('-', ' ')}
+          activeTabName={getTabTitle(activeTab)}
           onLogout={handleLogout}
           isSocketConnected={isSocketConnected}
         />
@@ -144,8 +152,20 @@ export function App() {
               />
             )}
             {activeTab === 'pharmacy' && <PharmacyModule />}
-            {activeTab === 'operations' && (
+            {activeTab.startsWith('operations') && (
               <OperationsModule
+                initialSubModule={
+                  activeTab === 'operations-procedures'
+                    ? 'procedures'
+                    : activeTab === 'operations-history'
+                    ? 'history'
+                    : 'examination'
+                }
+                onSubModuleChange={(sm) => {
+                  if (sm === 'examination') setActiveTab('operations-examination');
+                  else if (sm === 'procedures') setActiveTab('operations-procedures');
+                  else if (sm === 'history') setActiveTab('operations-history');
+                }}
                 onNavigateToBillingProcedure={(proc) => {
                   setPendingProcedureToBill(proc);
                   setActiveTab('billing');

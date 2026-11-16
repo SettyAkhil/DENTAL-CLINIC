@@ -54,6 +54,22 @@ export interface Appointment {
   consultationBill?: ConsultationBill | null;
 }
 
+export interface ClinicalFinding {
+  finding: string;
+  toothNumber?: string | null;
+  severity?: 'Mild' | 'Moderate' | 'Severe' | string | null;
+  details?: string | null;
+  observations?: string | null;
+}
+
+export interface RecommendedTreatment {
+  treatment: string;
+  priority?: 'Immediate' | 'High' | 'Normal' | 'Low' | string | null;
+  advice?: string | null;
+  plannedDate?: string | null;
+  followUpDate?: string | null;
+}
+
 export interface ClinicalNote {
   id: string;
   patientId: string;
@@ -71,6 +87,12 @@ export interface ClinicalNote {
   treatmentRecommendations?: string | null;
   notes?: string | null;
   advice?: string | null;
+  durationOfComplaint?: string | null;
+  patientDescription?: string | null;
+  clinicalFindings?: ClinicalFinding[] | null;
+  recommendedTreatments?: RecommendedTreatment[] | null;
+  followUpDate?: string | null;
+  procedures?: Procedure[];
 }
 
 export interface ConsultationBill {
@@ -129,9 +151,23 @@ export interface ProcedureMaster {
   id: string;
   code: string;
   name: string;
+  category: string;
   specialization: 'DENTAL' | 'ORTHOPEDIC';
+  description?: string | null;
   standardCharge: number;
   estimatedMins: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PrescribedMedication {
+  name: string;
+  dosage?: string | null;
+  frequency?: string | null;
+  duration?: string | null;
+  instructions?: string | null;
+  notes?: string | null;
 }
 
 export interface Procedure {
@@ -150,6 +186,8 @@ export interface Procedure {
   charges: number;
   status: 'PLANNED' | 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   clinicalNotes?: string | null;
+  clinicalNoteId?: string | null;
+  prescribedMedications?: PrescribedMedication[] | null;
   operationInvoice?: {
     id: string;
     invoiceNumber: string;
@@ -158,5 +196,22 @@ export interface Procedure {
     pendingBalance: number;
     paymentStatus: string;
   } | null;
+}
+
+export interface VisitHistoryRecord {
+  id: string;
+  visitDate: string;
+  patientId: string;
+  patient: Patient;
+  consultingDoctors: Array<{
+    id: string | null;
+    name: string;
+    specialization: string;
+  }>;
+  clinicalNotes: ClinicalNote[];
+  procedures: Procedure[];
+  prescriptions: any[];
+  prescribedMedications?: PrescribedMedication[];
+  appointment?: Appointment | null;
 }
 
