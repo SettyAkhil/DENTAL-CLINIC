@@ -19,11 +19,27 @@ import {
   Clock,
   Pill,
   Trash2,
+  BookOpen,
+  Edit2,
+  Tag,
+  CheckSquare,
+  Sparkles,
 } from 'lucide-react';
 import api from '../../services/api';
 import { Procedure, ProcedureMaster, Patient, Doctor } from '../../types';
 import { getSocket } from '../../services/socket';
 import { PatientSearchSelect } from '../../components/PatientSearchSelect';
+
+export const STANDARD_PROCEDURE_CATEGORIES = [
+  'Consultation & Examination',
+  'Restorative Procedures',
+  'Endodontic Procedures',
+  'Surgical Procedures',
+  'Periodontal Procedures',
+  'Prosthodontic Procedures',
+  'Orthodontic Procedures',
+  'Other Procedures',
+];
 
 export interface ProcedureCategoryGroup {
   category: string;
@@ -112,12 +128,30 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
   const [doctors, setDoctors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Sub-module view navigation: 'list' | 'create'
-  const [viewMode, setViewMode] = useState<'list' | 'create'>('list');
+  // Sub-module view navigation: 'list' | 'create' | 'catalogue'
+  const [viewMode, setViewMode] = useState<'list' | 'create' | 'catalogue'>('list');
+  const [previousViewMode, setPreviousViewMode] = useState<'list' | 'create'>('list');
 
   // Filters for list view
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Catalogue Management Filters & Search
+  const [catalogueSearch, setCatalogueSearch] = useState('');
+  const [catalogueCategoryFilter, setCatalogueCategoryFilter] = useState('ALL');
+  const [catalogueStatusFilter, setCatalogueStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+
+  // Modal for Add / Edit Permanent Catalogue Procedure
+  const [isMasterModalOpen, setIsMasterModalOpen] = useState(false);
+  const [editingMaster, setEditingMaster] = useState<ProcedureMaster | null>(null);
+  const [masterFormName, setMasterFormName] = useState('');
+  const [masterFormCategory, setMasterFormCategory] = useState('Consultation & Examination');
+  const [masterFormDescription, setMasterFormDescription] = useState('');
+  const [masterFormCharge, setMasterFormCharge] = useState<number>(500);
+  const [masterFormMins, setMasterFormMins] = useState<number>(45);
+  const [masterFormActive, setMasterFormActive] = useState<boolean>(true);
+  const [masterModalError, setMasterModalError] = useState<string | null>(null);
+  const [masterModalSubmitting, setMasterModalSubmitting] = useState(false);
 
   // Create Procedure Form State
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(initialPatient);
@@ -192,7 +226,7 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
     try {
       const [procRes, masterRes, docRes] = await Promise.all([
         api.get('/procedures'),
-        api.get('/procedures/masters'),
+        api.get('/procedures/masters?includeInactive=true'),
         api.get('/reports/doctors'),
       ]);
       if (procRes.data.success) setProcedures(procRes.data.procedures);
@@ -244,6 +278,160 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
       }
     });
     return total;
+  };
+
+  // 1. Prefix-based Search for Procedure Selection in Create Form
+  const filteredActiveMasters = useMemo(() => {
+    const q = procedureSearch.trim().toLowerCase();
+    if (!q) return [];
+    return procedureMasters.filter((m) => {
+      if (!m.isActive) return false;
+      const name = m.name.trim().toLowerCase();
+      // 1. Direct name starts with query prefix
+      if (name.startsWith(q)) return true;
+      // 2. Acronym in parentheses starts with query prefix (e.g. "Root Canal Treatment (RCT)" -> "(rct)" starts with "rc")
+      const parenMatch = name.match(/\(([^)]+)\)/);
+      if (parenMatch && parenMatch[1].toLowerCase().startsWith(q)) return true;
+      // 3. Any word in procedure name starts with query prefix (e.g. "Dental Scaling" -> "scaling" starts with "sc")
+      const words = name.split(/[\s/_-]+/);
+      if (words.some((word) => word.startsWith(q))) return true;
+      return false;
+    });
+  }, [procedureMasters, procedureSearch]);
+
+  // 2. Catalogue View Filtering (Search, Category, Active/Inactive Status)
+  const filteredCatalogueMasters = useMemo(() => {
+    return procedureMasters.filter((m) => {
+      if (catalogueStatusFilter === 'ACTIVE' && !m.isActive) return false;
+      if (catalogueStatusFilter === 'INACTIVE' && m.isActive) return false;
+      if (catalogueCategoryFilter !== 'ALL' && m.category !== catalogueCategoryFilter) return false;
+      if (catalogueSearch.trim()) {
+        const q = catalogueSearch.trim().toLowerCase();
+        const matchesName = m.name.toLowerCase().includes(q);
+        const matchesCode = (m.code || '').toLowerCase().includes(q);
+        const matchesCat = (m.category || '').toLowerCase().includes(q);
+        const matchesDesc = (m.description || '').toLowerCase().includes(q);
+        if (!matchesName && !matchesCode && !matchesCat && !matchesDesc) return false;
+      }
+      return true;
+    });
+  }, [procedureMasters, catalogueStatusFilter, catalogueCategoryFilter, catalogueSearch]);
+
+  // Catalogue Management Handlers
+  const handleOpenAddMasterModal = (prefillName = '') => {
+    setEditingMaster(null);
+    setMasterFormName(prefillName);
+    setMasterFormCategory('Consultation & Examination');
+    setMasterFormDescription('');
+    setMasterFormCharge(500);
+    setMasterFormMins(45);
+    setMasterFormActive(true);
+    setMasterModalError(null);
+    setIsMasterModalOpen(true);
+  };
+
+  const handleOpenEditMasterModal = (master: ProcedureMaster) => {
+    setEditingMaster(master);
+    setMasterFormName(master.name);
+    setMasterFormCategory(master.category || 'Consultation & Examination');
+    setMasterFormDescription(master.description || '');
+    setMasterFormCharge(master.standardCharge || 500);
+    setMasterFormMins(master.estimatedMins || 45);
+    setMasterFormActive(master.isActive);
+    setMasterModalError(null);
+    setIsMasterModalOpen(true);
+  };
+
+  const handleSaveMaster = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMasterModalError(null);
+    const trimmedName = masterFormName.trim();
+    const trimmedCat = masterFormCategory.trim();
+
+    if (!trimmedName) {
+      setMasterModalError('Procedure name is required.');
+      return;
+    }
+    if (!trimmedCat) {
+      setMasterModalError('Procedure category is required.');
+      return;
+    }
+
+    // Client-side duplicate check (case-insensitive)
+    const duplicate = procedureMasters.find(
+      (m) =>
+        m.name.trim().toLowerCase() === trimmedName.toLowerCase() &&
+        (!editingMaster || m.id !== editingMaster.id)
+    );
+    if (duplicate) {
+      setMasterModalError(`A procedure with this name already exists in the catalogue (${duplicate.code}).`);
+      return;
+    }
+
+    setMasterModalSubmitting(true);
+    try {
+      if (editingMaster) {
+        const res = await api.put(`/procedures/masters/${editingMaster.id}`, {
+          name: trimmedName,
+          category: trimmedCat,
+          description: masterFormDescription.trim() || null,
+          standardCharge: Number(masterFormCharge) || 500,
+          estimatedMins: Number(masterFormMins) || 45,
+          isActive: masterFormActive,
+        });
+        if (res.data.success) {
+          setActionSuccessMessage(`Procedure "${res.data.master.name}" updated successfully.`);
+          setIsMasterModalOpen(false);
+          fetchData();
+        }
+      } else {
+        const res = await api.post('/procedures/masters', {
+          name: trimmedName,
+          category: trimmedCat,
+          description: masterFormDescription.trim() || null,
+          standardCharge: Number(masterFormCharge) || 500,
+          estimatedMins: Number(masterFormMins) || 45,
+          isActive: masterFormActive,
+        });
+        if (res.data.success) {
+          setActionSuccessMessage(`Procedure "${res.data.master.name}" permanently added to the catalogue!`);
+          setIsMasterModalOpen(false);
+          fetchData();
+
+          // If currently inside the Create Procedure form, automatically add this new procedure to selections
+          if (viewMode === 'create') {
+            if (!selectedProcedures.includes(res.data.master.name)) {
+              const updated = [...selectedProcedures, res.data.master.name];
+              setSelectedProcedures(updated);
+              setCharges(calculateEstimatedCharges(updated));
+            }
+            setProcedureSearch('');
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      setMasterModalError(err.response?.data?.message || 'Failed to save procedure to catalogue.');
+    } finally {
+      setMasterModalSubmitting(false);
+    }
+  };
+
+  const handleToggleMasterStatus = async (master: ProcedureMaster) => {
+    const newStatus = !master.isActive;
+    try {
+      const res = await api.patch(`/procedures/masters/${master.id}/status`, {
+        isActive: newStatus,
+      });
+      if (res.data.success) {
+        setActionSuccessMessage(
+          `Procedure "${master.name}" is now ${newStatus ? 'Active' : 'Inactive'}.`
+        );
+        fetchData();
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to update procedure status.');
+    }
   };
 
   const handleSendToBilling = async (proc: Procedure) => {
@@ -478,6 +666,19 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
             <div className="flex items-center gap-2.5">
               <button
                 type="button"
+                onClick={() => {
+                  setPreviousViewMode('list');
+                  setViewMode('catalogue');
+                }}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer border border-slate-200"
+                title="View full procedure catalogue and manage master procedures"
+              >
+                <BookOpen className="w-4 h-4 text-slate-500" />
+                <span>Procedure Catalogue</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => navigateToCreate()}
                 className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-2 cursor-pointer"
               >
@@ -660,6 +861,18 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => {
+                  setPreviousViewMode('create');
+                  setViewMode('catalogue');
+                }}
+                className="px-3.5 py-2 text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-100 rounded-xl hover:bg-slate-200 transition cursor-pointer flex items-center gap-1.5 border border-slate-200"
+                title="Browse Full Procedure Catalogue"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-slate-500" />
+                <span>Procedure Catalogue</span>
+              </button>
+              <button
+                type="button"
                 onClick={handleBackToList}
                 className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 rounded-xl hover:bg-slate-200 transition cursor-pointer"
               >
@@ -719,54 +932,269 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
               </div>
             </div>
 
-            {/* 2. Categorized Multi-Select Procedures */}
+            {/* 2. Search-Based Procedure Selection */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
-                  <Scissors className="w-4 h-4 text-blue-600" />
-                  <span>2. Procedures Selection (Multi-select)</span>
-                </h3>
-                <span className="text-xs font-bold text-blue-700 bg-blue-100/70 border border-blue-200 px-2.5 py-0.5 rounded-full">
-                  {selectedProcedures.length} Selected
-                </span>
-              </div>
-
-              {/* Selected Chips */}
-              <div className="flex flex-wrap gap-2 p-3 bg-slate-50/70 border border-slate-200 rounded-xl min-h-[46px] items-center">
-                {selectedProcedures.map((proc) => (
-                  <span
-                    key={proc}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-blue-200 text-blue-900 rounded-lg text-xs font-bold shadow-2xs"
-                  >
-                    <span>{proc}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeProcedureChip(proc)}
-                      className="text-slate-400 hover:text-rose-600 p-0.5 rounded hover:bg-slate-100"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-
-              {/* Search & Custom Entry */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    placeholder="Search procedures across categories..."
-                    value={procedureSearch}
-                    onChange={(e) => setProcedureSearch(e.target.value)}
-                    className="w-full text-xs pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
-                  />
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                    <Scissors className="w-4 h-4 text-blue-600" />
+                    <span>2. Procedures Selection (Search-Based)</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Search procedures by typing starting prefix or name. Select one or multiple procedures for this visit.
+                  </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviousViewMode('create');
+                      setViewMode('catalogue');
+                    }}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                    title="View complete procedure catalogue"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Procedure List</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddMasterModal(procedureSearch.trim())}
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                    title="Add a new permanent procedure to hospital catalogue"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Add New Procedure</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Selected Procedures Section */}
+              <div className="p-3.5 bg-blue-50/40 rounded-xl border border-blue-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wide flex items-center gap-1.5">
+                    <span>Selected Procedures for this Visit:</span>
+                    <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full font-black">
+                      {selectedProcedures.length}
+                    </span>
+                  </span>
+                  {selectedProcedures.length > 0 && (
+                    <span className="text-[11px] text-blue-800 font-bold">
+                      Est. Base Charges: ₹{charges}
+                    </span>
+                  )}
+                </div>
+
+                {selectedProcedures.length === 0 ? (
+                  <div className="p-2 text-xs text-rose-600 font-medium">
+                    * Please search and select at least one procedure below to proceed.
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {selectedProcedures.map((proc) => {
+                      const matchedMaster = procedureMasters.find(
+                        (m) => m.name.toLowerCase() === proc.toLowerCase()
+                      );
+                      return (
+                        <span
+                          key={proc}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-blue-200 text-blue-900 rounded-lg text-xs font-bold shadow-2xs group"
+                        >
+                          <span>{proc}</span>
+                          {matchedMaster?.standardCharge ? (
+                            <span className="text-[10px] text-slate-500 font-mono font-medium">
+                              ₹{matchedMaster.standardCharge}
+                            </span>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => removeProcedureChip(proc)}
+                            className="text-slate-400 hover:text-rose-600 p-0.5 rounded hover:bg-rose-50 transition cursor-pointer"
+                            title={`Remove ${proc}`}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Procedure Search Field */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                <input
+                  type="text"
+                  placeholder="Type procedure name or starting characters (e.g. 'R', 'RC', 'Sc', 'Consultation', 'Crown')..."
+                  value={procedureSearch}
+                  onChange={(e) => setProcedureSearch(e.target.value)}
+                  className="w-full text-xs pl-10 pr-9 py-3 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium placeholder:text-slate-400"
+                />
+                {procedureSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setProcedureSearch('')}
+                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                    title="Clear search"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Search Results Area */}
+              {procedureSearch.trim().length === 0 ? (
+                <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 space-y-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+                    <Search className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-700">Search to Select Procedures</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5 max-w-md mx-auto">
+                      Type starting prefix characters or procedure name above to filter available procedures in real-time.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreviousViewMode('create');
+                        setViewMode('catalogue');
+                      }}
+                      className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Browse Complete Catalogue ({procedureMasters.filter((m) => m.isActive).length})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAddMasterModal()}
+                      className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Add New Permanent Procedure</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700">
+                      Search Results for "{procedureSearch}" ({filteredActiveMasters.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setProcedureSearch('')}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-semibold cursor-pointer"
+                    >
+                      Clear search
+                    </button>
+                  </div>
+
+                  {filteredActiveMasters.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-80 overflow-y-auto pr-1">
+                      {filteredActiveMasters.map((master) => {
+                        const isSelected = selectedProcedures.includes(master.name);
+                        return (
+                          <div
+                            key={master.id}
+                            onClick={() => toggleProcedureSelection(master.name)}
+                            className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between gap-3 ${
+                              isSelected
+                                ? 'bg-blue-50/80 border-blue-300 shadow-2xs ring-1 ring-blue-400'
+                                : 'bg-white hover:bg-slate-50/80 border-slate-200 shadow-2xs'
+                            }`}
+                          >
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-xs text-slate-900 truncate">
+                                  {master.name}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                                  {master.category}
+                                </span>
+                                <span className="text-[11px] font-bold text-blue-700">
+                                  ₹{master.standardCharge}
+                                </span>
+                              </div>
+                              {master.description && (
+                                <p className="text-[11px] text-slate-500 truncate">{master.description}</p>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0 cursor-pointer ${
+                                isSelected
+                                  ? 'bg-blue-600 text-white shadow-2xs'
+                                  : 'bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 border border-slate-200'
+                              }`}
+                            >
+                              {isSelected ? '✓ Selected' : '+ Select'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-5 bg-amber-50/40 border border-amber-200 rounded-xl space-y-3">
+                      <div className="flex items-center gap-2 text-amber-900 text-xs font-bold">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>No catalogue procedure found starting with "{procedureSearch}".</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600">
+                        You can either use "{procedureSearch}" as a one-time custom procedure for this patient visit, or add it permanently to the hospital catalogue.
+                      </p>
+
+                      <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const trimmed = procedureSearch.trim();
+                            if (trimmed && !selectedProcedures.includes(trimmed)) {
+                              const updated = [...selectedProcedures, trimmed];
+                              setSelectedProcedures(updated);
+                              setCharges(calculateEstimatedCharges(updated));
+                            }
+                            setProcedureSearch('');
+                          }}
+                          className="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Tag className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Use "{procedureSearch}" for this Visit Only</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAddMasterModal(procedureSearch.trim())}
+                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>+ Add to Permanent Catalogue</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* One-Time Custom Visit Procedure Entry */}
+              <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="text-[11px] text-slate-500">
+                  <span className="font-semibold text-slate-700">Need a one-time custom procedure?</span> Enter custom name below for this visit only without modifying the catalogue.
+                </div>
+
+                <div className="flex items-center gap-2 sm:w-80">
                   <input
                     type="text"
-                    placeholder="Or enter custom procedure name..."
+                    placeholder="Enter custom visit procedure name..."
                     value={customProcedureInput}
                     onChange={(e) => setCustomProcedureInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -775,55 +1203,16 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
                         handleAddCustomProcedure();
                       }
                     }}
-                    className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
                   />
                   <button
                     type="button"
                     onClick={handleAddCustomProcedure}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl border border-slate-200 shrink-0 cursor-pointer"
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl border border-slate-200 shrink-0 cursor-pointer"
                   >
                     + Add
                   </button>
                 </div>
-              </div>
-
-              {/* Categorized Options Accordion / Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto pr-1">
-                {PROCEDURE_CATEGORIES.map((cat) => {
-                  const filtered = cat.procedures.filter((p) =>
-                    !procedureSearch || p.toLowerCase().includes(procedureSearch.toLowerCase())
-                  );
-
-                  if (filtered.length === 0) return null;
-
-                  return (
-                    <div key={cat.category} className="p-3 bg-slate-50/70 border border-slate-200 rounded-xl space-y-2">
-                      <div className="text-[11px] font-black uppercase text-slate-600 tracking-wider">
-                        {cat.category}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {filtered.map((p) => {
-                          const isSelected = selectedProcedures.includes(p);
-                          return (
-                            <button
-                              type="button"
-                              key={p}
-                              onClick={() => toggleProcedureSelection(p)}
-                              className={`text-xs px-2.5 py-1 rounded-lg font-medium border transition cursor-pointer ${
-                                isSelected
-                                  ? 'bg-blue-600 text-white border-blue-600 shadow-2xs font-bold'
-                                  : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                              }`}
-                            >
-                              {isSelected ? '✓ ' : '+ '}
-                              {p}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             </div>
 
@@ -1131,6 +1520,411 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* VIEW MODE 3: PROCEDURE CATALOGUE / LIST */}
+      {viewMode === 'catalogue' && (
+        <div className="space-y-5">
+          {/* Top Bar with Navigation */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setViewMode(previousViewMode)}
+                className="p-2 text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+                title={`Back to ${previousViewMode === 'create' ? 'Record Procedure' : 'Procedures List'}`}
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <div>
+                <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 mb-0.5">
+                  <BookOpen className="w-4 h-4" />
+                  <span>Procedure Catalogue & Master Management</span>
+                </div>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">Procedure List & Catalogue</h2>
+                <p className="text-xs text-slate-500">
+                  Hospital master catalogue of dental procedures, categories, standard fees, and active clinical status.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => handleOpenAddMasterModal()}
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-2 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add New Procedure</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Metric Summary Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total in Catalogue</div>
+              <div className="text-lg font-black text-slate-900 mt-0.5">{procedureMasters.length}</div>
+            </div>
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Active Procedures</div>
+              <div className="text-lg font-black text-emerald-700 mt-0.5">
+                {procedureMasters.filter((m) => m.isActive).length}
+              </div>
+            </div>
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Inactive Procedures</div>
+              <div className="text-lg font-black text-slate-600 mt-0.5">
+                {procedureMasters.filter((m) => !m.isActive).length}
+              </div>
+            </div>
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Filtered Matches</div>
+              <div className="text-lg font-black text-blue-700 mt-0.5">{filteredCatalogueMasters.length}</div>
+            </div>
+          </div>
+
+          {/* Search & Category / Status Filters */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
+            <div className="relative w-full md:w-80">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                placeholder="Search catalogue by name, code, description..."
+                value={catalogueSearch}
+                onChange={(e) => setCatalogueSearch(e.target.value)}
+                className="w-full text-xs pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+              />
+              {catalogueSearch && (
+                <button
+                  type="button"
+                  onClick={() => setCatalogueSearch('')}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+              {/* Category Filter */}
+              <select
+                value={catalogueCategoryFilter}
+                onChange={(e) => setCatalogueCategoryFilter(e.target.value)}
+                className="text-xs p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+              >
+                <option value="ALL">All Categories ({procedureMasters.length})</option>
+                {STANDARD_PROCEDURE_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat} ({procedureMasters.filter((m) => m.category === cat).length})
+                  </option>
+                ))}
+              </select>
+
+              {/* Status Filter */}
+              <select
+                value={catalogueStatusFilter}
+                onChange={(e) => setCatalogueStatusFilter(e.target.value as any)}
+                className="text-xs p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+              >
+                <option value="ALL">All Status</option>
+                <option value="ACTIVE">Active Only ({procedureMasters.filter((m) => m.isActive).length})</option>
+                <option value="INACTIVE">Inactive Only ({procedureMasters.filter((m) => !m.isActive).length})</option>
+              </select>
+
+              {(catalogueSearch || catalogueCategoryFilter !== 'ALL' || catalogueStatusFilter !== 'ALL') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatalogueSearch('');
+                    setCatalogueCategoryFilter('ALL');
+                    setCatalogueStatusFilter('ALL');
+                  }}
+                  className="text-xs text-slate-500 hover:text-slate-800 font-semibold underline px-1 cursor-pointer"
+                >
+                  Reset filters
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Catalogue Table */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+            {filteredCatalogueMasters.length === 0 ? (
+              <div className="p-12 text-center space-y-3">
+                <BookOpen className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-xs font-bold text-slate-700">No procedures match your filter criteria</p>
+                <p className="text-[11px] text-slate-400">
+                  Try adjusting your search query, category, or status filter.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatalogueSearch('');
+                    setCatalogueCategoryFilter('ALL');
+                    setCatalogueStatusFilter('ALL');
+                  }}
+                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50/80 text-slate-600 font-bold border-b border-slate-200/80">
+                    <tr>
+                      <th className="p-3 pl-5">Procedure Name</th>
+                      <th className="p-3">Code</th>
+                      <th className="p-3">Category</th>
+                      <th className="p-3">Description</th>
+                      <th className="p-3">Standard Fee</th>
+                      <th className="p-3">Status</th>
+                      <th className="p-3 pr-5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredCatalogueMasters.map((master) => (
+                      <tr key={master.id} className="hover:bg-slate-50/60 transition">
+                        <td className="p-3 pl-5 font-bold text-slate-900">
+                          {master.name}
+                        </td>
+                        <td className="p-3 font-mono text-slate-500 text-[11px]">
+                          {master.code}
+                        </td>
+                        <td className="p-3">
+                          <span className="text-[10px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md whitespace-nowrap">
+                            {master.category}
+                          </span>
+                        </td>
+                        <td className="p-3 text-slate-500 max-w-xs truncate">
+                          {master.description || <span className="italic text-slate-300">None</span>}
+                        </td>
+                        <td className="p-3 font-bold text-slate-900">
+                          ₹{master.standardCharge}
+                        </td>
+                        <td className="p-3">
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                              master.isActive
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                master.isActive ? 'bg-emerald-600' : 'bg-slate-400'
+                              }`}
+                            />
+                            <span>{master.isActive ? 'Active' : 'Inactive'}</span>
+                          </span>
+                        </td>
+                        <td className="p-3 pr-5 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditMasterModal(master)}
+                              className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                              title="Edit Procedure"
+                            >
+                              <Edit2 className="w-3 h-3 text-slate-500" />
+                              <span>Edit</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleMasterStatus(master)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                                master.isActive
+                                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200'
+                                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
+                              }`}
+                              title={master.isActive ? 'Deactivate procedure' : 'Activate procedure'}
+                            >
+                              <span>{master.isActive ? 'Deactivate' : 'Activate'}</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD / EDIT PERMANENT CATALOGUE PROCEDURE */}
+      {isMasterModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-blue-700 to-indigo-700 p-5 text-white flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-black">
+                  {editingMaster ? 'Edit Catalogue Procedure' : 'Add New Procedure to Catalogue'}
+                </h3>
+                <p className="text-xs text-blue-100 mt-0.5">
+                  Permanent hospital procedure entry for clinical records and scheduling.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMasterModalOpen(false)}
+                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleSaveMaster} className="p-6 space-y-4">
+              {masterModalError && (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span className="font-semibold">{masterModalError}</span>
+                </div>
+              )}
+
+              {/* Procedure Name */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Procedure Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Composite Restoration, Gingivectomy, Tooth Bleaching..."
+                  value={masterFormName}
+                  onChange={(e) => setMasterFormName(e.target.value)}
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium"
+                  required
+                />
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Procedure Category <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={masterFormCategory}
+                  onChange={(e) => setMasterFormCategory(e.target.value)}
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-medium"
+                  required
+                >
+                  {STANDARD_PROCEDURE_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Standard Charge & Estimated Minutes */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Standard Fee (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 1500"
+                    value={masterFormCharge}
+                    onChange={(e) => setMasterFormCharge(Number(e.target.value))}
+                    className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-hidden font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Est. Duration (Mins)
+                  </label>
+                  <input
+                    type="number"
+                    min="5"
+                    step="5"
+                    placeholder="e.g. 45"
+                    value={masterFormMins}
+                    onChange={(e) => setMasterFormMins(Number(e.target.value))}
+                    className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Procedure Description (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Clinical purpose, indications, or steps for this procedure..."
+                  value={masterFormDescription}
+                  onChange={(e) => setMasterFormDescription(e.target.value)}
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-hidden text-slate-700"
+                />
+              </div>
+
+              {/* Status Radio */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Catalogue Status
+                </label>
+                <div className="flex items-center gap-4 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+                  <label className="flex items-center gap-2 text-xs font-bold text-emerald-800 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="masterStatus"
+                      checked={masterFormActive === true}
+                      onChange={() => setMasterFormActive(true)}
+                      className="text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span>Active (Available in Search)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="masterStatus"
+                      checked={masterFormActive === false}
+                      onChange={() => setMasterFormActive(false)}
+                      className="text-slate-600 focus:ring-slate-500"
+                    />
+                    <span>Inactive (Hidden from Search)</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsMasterModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={masterModalSubmitting}
+                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  {masterModalSubmitting ? (
+                    <span>Saving to Catalogue...</span>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>{editingMaster ? 'Save Changes' : 'Add to Catalogue'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

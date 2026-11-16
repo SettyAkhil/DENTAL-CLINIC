@@ -227,9 +227,10 @@ model ProcedureMaster {
   id             String         @id @default(uuid())
   code           String         @unique
   name           String
-  specialization Specialization
+  category       String         @default("Consultation & Examination")
+  specialization Specialization @default(DENTAL)
   description    String?
-  standardCharge Float
+  standardCharge Float          @default(500.0)
   estimatedMins  Int            @default(60)
   isActive       Boolean        @default(true)
   createdAt      DateTime       @default(now())

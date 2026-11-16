@@ -7,14 +7,266 @@ import { ProcedureStatus, PaymentMode, PaymentStatus } from '@prisma/client';
 
 const router = Router();
 
-// GET /api/procedures/masters
+const DEFAULT_PROCEDURES_SEED = [
+  // Consultation & Examination
+  { category: 'Consultation & Examination', name: 'Consultation', standardCharge: 500, description: 'General dental consultation and preliminary clinical evaluation' },
+  { category: 'Consultation & Examination', name: 'Dental Examination', standardCharge: 500, description: 'Comprehensive examination of teeth, gums, and oral structures' },
+  { category: 'Consultation & Examination', name: 'Oral Examination', standardCharge: 500, description: 'Detailed visual and tactile oral cavity inspection' },
+  { category: 'Consultation & Examination', name: 'Diagnosis', standardCharge: 500, description: 'Clinical diagnostic assessment and treatment planning' },
+
+  // Restorative Procedures
+  { category: 'Restorative Procedures', name: 'Dental Filling', standardCharge: 1200, description: 'Direct restorative cavity filling' },
+  { category: 'Restorative Procedures', name: 'GIC Restoration', standardCharge: 1000, description: 'Glass Ionomer Cement tooth restoration' },
+  { category: 'Restorative Procedures', name: 'Composite Restoration', standardCharge: 1500, description: 'Tooth-colored aesthetic composite resin restoration' },
+  { category: 'Restorative Procedures', name: 'Amalgam Restoration', standardCharge: 800, description: 'Dental amalgam restorative filling' },
+  { category: 'Restorative Procedures', name: 'Crown Placement', standardCharge: 4000, description: 'Full coverage prosthetic crown placement and cementation' },
+  { category: 'Restorative Procedures', name: 'Bridge Placement', standardCharge: 8000, description: 'Fixed partial denture bridge placement' },
+  { category: 'Restorative Procedures', name: 'Inlay / Onlay', standardCharge: 3500, description: 'Indirect laboratory fabricated inlay or onlay' },
+
+  // Endodontic Procedures
+  { category: 'Endodontic Procedures', name: 'Root Canal Treatment (RCT)', standardCharge: 3500, description: 'Complete root canal therapy and canal obturation' },
+  { category: 'Endodontic Procedures', name: 'Re-RCT', standardCharge: 4500, description: 'Endodontic retreatment of previously treated tooth' },
+  { category: 'Endodontic Procedures', name: 'Pulp Capping', standardCharge: 1200, description: 'Direct or indirect vital pulp capping therapy' },
+  { category: 'Endodontic Procedures', name: 'Pulpotomy', standardCharge: 1800, description: 'Coronal pulp removal with medicament dressing' },
+
+  // Surgical Procedures
+  { category: 'Surgical Procedures', name: 'Tooth Extraction', standardCharge: 800, description: 'Non-surgical routine tooth extraction' },
+  { category: 'Surgical Procedures', name: 'Surgical Extraction', standardCharge: 2500, description: 'Surgical tooth extraction with mucoperiosteal flap' },
+  { category: 'Surgical Procedures', name: 'Impacted Tooth Removal', standardCharge: 3500, description: 'Surgical extraction of bone-impacted tooth' },
+  { category: 'Surgical Procedures', name: 'Irrigation', standardCharge: 400, description: 'Antiseptic debridement and socket/pocket irrigation' },
+  { category: 'Surgical Procedures', name: 'Suture Placement', standardCharge: 500, description: 'Surgical wound closure and suture placement' },
+  { category: 'Surgical Procedures', name: 'Sutures Removal', standardCharge: 300, description: 'Post-operative suture removal and evaluation' },
+  { category: 'Surgical Procedures', name: 'Incision and Drainage', standardCharge: 1500, description: 'Incision and drainage of acute dental abscess' },
+
+  // Periodontal Procedures
+  { category: 'Periodontal Procedures', name: 'Dental Scaling', standardCharge: 1200, description: 'Full mouth ultrasonic scaling and plaque debridement' },
+  { category: 'Periodontal Procedures', name: 'Polishing', standardCharge: 800, description: 'Prophylactic polishing and extrinsic stain removal' },
+  { category: 'Periodontal Procedures', name: 'Deep Scaling', standardCharge: 2000, description: 'Subgingival deep calculus debridement' },
+  { category: 'Periodontal Procedures', name: 'Root Planing', standardCharge: 2500, description: 'Root surface smoothing to remove necrotic cementum' },
+  { category: 'Periodontal Procedures', name: 'Gingival Treatment', standardCharge: 1800, description: 'Therapeutic treatment for gingival inflammation and disease' },
+
+  // Prosthodontic Procedures
+  { category: 'Prosthodontic Procedures', name: 'Denture Placement', standardCharge: 12000, description: 'Fitting and insertion of complete or partial denture' },
+  { category: 'Prosthodontic Procedures', name: 'Denture Adjustment', standardCharge: 800, description: 'Clinical relief and adjustment of denture borders or occlusion' },
+  { category: 'Prosthodontic Procedures', name: 'Impression Taking', standardCharge: 600, description: 'Diagnostic or master dental impression taking' },
+  { category: 'Prosthodontic Procedures', name: 'Temporary Crown Placement', standardCharge: 1000, description: 'Interim temporary crown fabrication and cementation' },
+
+  // Orthodontic Procedures
+  { category: 'Orthodontic Procedures', name: 'Orthodontic Consultation', standardCharge: 800, description: 'Orthodontic diagnostic analysis and alignment planning' },
+  { category: 'Orthodontic Procedures', name: 'Orthodontic Alignment', standardCharge: 25000, description: 'Comprehensive orthodontic alignment and archwire adjustment' },
+  { category: 'Orthodontic Procedures', name: 'Braces Placement', standardCharge: 30000, description: 'Fixed orthodontic appliance bracket bonding' },
+  { category: 'Orthodontic Procedures', name: 'Retainer Placement', standardCharge: 5000, description: 'Post-treatment retention appliance placement' },
+
+  // Other Procedures
+  { category: 'Other Procedures', name: 'Fluoride Application', standardCharge: 1000, description: 'Topical preventive fluoride application' },
+  { category: 'Other Procedures', name: 'Sealant Application', standardCharge: 1200, description: 'Preventive dental pit and fissure sealant application' },
+  { category: 'Other Procedures', name: 'Tooth Whitening', standardCharge: 6000, description: 'Professional in-office vital tooth bleaching' },
+  { category: 'Other Procedures', name: 'Other Procedure', standardCharge: 500, description: 'Clinical dental procedure' },
+];
+
+async function ensureDefaultProcedureCatalogue() {
+  const count = await prisma.procedureMaster.count();
+  if (count === 0) {
+    const currentYear = new Date().getFullYear();
+    for (let i = 0; i < DEFAULT_PROCEDURES_SEED.length; i++) {
+      const item = DEFAULT_PROCEDURES_SEED[i];
+      const code = `PM-${currentYear}-${(i + 1).toString().padStart(5, '0')}`;
+      await prisma.procedureMaster.create({
+        data: {
+          code,
+          name: item.name,
+          category: item.category,
+          specialization: 'DENTAL',
+          description: item.description,
+          standardCharge: item.standardCharge,
+          estimatedMins: 45,
+          isActive: true,
+        },
+      });
+    }
+  }
+}
+
+// GET /api/procedures/masters - Query procedure masters catalogue
 router.get('/masters', authenticateToken, async (req: Request, res: Response) => {
   try {
+    await ensureDefaultProcedureCatalogue();
+
+    const { search, category, status, includeInactive } = req.query;
+    const where: any = {};
+
+    // Filter by Active / Inactive status
+    if (status === 'INACTIVE') {
+      where.isActive = false;
+    } else if (status === 'ALL' || includeInactive === 'true') {
+      // Return both active and inactive
+    } else {
+      // Default to active only
+      where.isActive = true;
+    }
+
+    if (category && category !== 'ALL') {
+      where.category = String(category);
+    }
+
+    if (search && typeof search === 'string' && search.trim().length > 0) {
+      const q = search.trim();
+      where.OR = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+        { code: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
     const masters = await prisma.procedureMaster.findMany({
-      where: { isActive: true },
-      orderBy: { name: 'asc' },
+      where,
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
+
     res.json({ success: true, masters });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/procedures/masters - Add New Procedure (Permanent Catalogue Entry)
+const createProcedureMasterSchema = z.object({
+  name: z.string().min(1, 'Procedure name is required'),
+  category: z.string().min(1, 'Procedure category is required'),
+  description: z.string().optional().nullable(),
+  standardCharge: z.number().min(0).optional().default(500),
+  estimatedMins: z.number().min(1).optional().default(45),
+  isActive: z.boolean().optional().default(true),
+});
+
+router.post('/masters', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const data = createProcedureMasterSchema.parse(req.body);
+    const trimmedName = data.name.trim();
+    const trimmedCategory = data.category.trim();
+
+    // Prevent duplicate procedure names in catalogue (case-insensitive)
+    const existing = await prisma.procedureMaster.findFirst({
+      where: {
+        name: { equals: trimmedName, mode: 'insensitive' },
+      },
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: `A procedure named "${trimmedName}" already exists in the catalogue (${existing.code}).`,
+      });
+    }
+
+    const count = await prisma.procedureMaster.count();
+    const code = `PM-${new Date().getFullYear()}-${(count + 1).toString().padStart(5, '0')}`;
+
+    const master = await prisma.procedureMaster.create({
+      data: {
+        code,
+        name: trimmedName,
+        category: trimmedCategory,
+        specialization: 'DENTAL',
+        description: data.description?.trim() || null,
+        standardCharge: Number(data.standardCharge) || 500,
+        estimatedMins: Number(data.estimatedMins) || 45,
+        isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Procedure "${master.name}" permanently added to the procedure catalogue`,
+      master,
+    });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ success: false, errors: err.errors });
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PUT /api/procedures/masters/:id - Edit Existing Catalogue Entry
+const updateProcedureMasterSchema = z.object({
+  name: z.string().min(1, 'Procedure name is required').optional(),
+  category: z.string().min(1, 'Procedure category is required').optional(),
+  description: z.string().optional().nullable(),
+  standardCharge: z.number().min(0).optional(),
+  estimatedMins: z.number().min(1).optional(),
+  isActive: z.boolean().optional(),
+});
+
+router.put('/masters/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const data = updateProcedureMasterSchema.parse(req.body);
+
+    const existing = await prisma.procedureMaster.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Procedure not found in catalogue' });
+    }
+
+    // Check duplicate name if name is being changed
+    if (data.name && data.name.trim().toLowerCase() !== existing.name.toLowerCase()) {
+      const duplicate = await prisma.procedureMaster.findFirst({
+        where: {
+          id: { not: id },
+          name: { equals: data.name.trim(), mode: 'insensitive' },
+        },
+      });
+
+      if (duplicate) {
+        return res.status(400).json({
+          success: false,
+          message: `Another procedure named "${data.name.trim()}" already exists in the catalogue (${duplicate.code}).`,
+        });
+      }
+    }
+
+    const updated = await prisma.procedureMaster.update({
+      where: { id },
+      data: {
+        ...(data.name && { name: data.name.trim() }),
+        ...(data.category && { category: data.category.trim() }),
+        ...(data.description !== undefined && { description: data.description?.trim() || null }),
+        ...(data.standardCharge !== undefined && { standardCharge: Number(data.standardCharge) }),
+        ...(data.estimatedMins !== undefined && { estimatedMins: Number(data.estimatedMins) }),
+        ...(data.isActive !== undefined && { isActive: Boolean(data.isActive) }),
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `Procedure "${updated.name}" updated successfully`,
+      master: updated,
+    });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ success: false, errors: err.errors });
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /api/procedures/masters/:id/status - Toggle Active / Inactive Status
+router.patch('/masters/:id/status', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    const existing = await prisma.procedureMaster.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Procedure not found in catalogue' });
+    }
+
+    const updated = await prisma.procedureMaster.update({
+      where: { id },
+      data: { isActive: Boolean(isActive) },
+    });
+
+    res.json({
+      success: true,
+      message: `Procedure "${updated.name}" is now ${updated.isActive ? 'Active' : 'Inactive'}`,
+      master: updated,
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }

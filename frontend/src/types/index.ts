@@ -151,9 +151,14 @@ export interface ProcedureMaster {
   id: string;
   code: string;
   name: string;
+  category: string;
   specialization: 'DENTAL' | 'ORTHOPEDIC';
+  description?: string | null;
   standardCharge: number;
   estimatedMins: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface PrescribedMedication {
