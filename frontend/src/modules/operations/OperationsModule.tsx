@@ -21,15 +21,30 @@ interface OperationsModuleProps {
   onNavigateToBillingProcedure?: (procedure: Procedure) => void;
   initialSubModule?: OperationsSubModuleType;
   initialPatientId?: string | null;
+  onSubModuleChange?: (subModule: OperationsSubModuleType) => void;
 }
 
 export const OperationsModule: React.FC<OperationsModuleProps> = ({
   onNavigateToBillingProcedure,
   initialSubModule = 'examination',
   initialPatientId = null,
+  onSubModuleChange,
 }) => {
   const [activeSubModule, setActiveSubModule] = useState<OperationsSubModuleType>(initialSubModule);
   const [activePatientContext, setActivePatientContext] = useState<Patient | null>(null);
+
+  React.useEffect(() => {
+    if (initialSubModule) {
+      setActiveSubModule(initialSubModule);
+    }
+  }, [initialSubModule]);
+
+  const handleSubModuleSwitch = (sm: OperationsSubModuleType) => {
+    setActiveSubModule(sm);
+    if (onSubModuleChange) {
+      onSubModuleChange(sm);
+    }
+  };
 
   // Sub-module navigation tabs config
   const subModules = [
@@ -84,7 +99,7 @@ export const OperationsModule: React.FC<OperationsModuleProps> = ({
               <button
                 type="button"
                 key={sm.id}
-                onClick={() => setActiveSubModule(sm.id)}
+                onClick={() => handleSubModuleSwitch(sm.id)}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   isActive
                     ? 'bg-white text-blue-700 shadow-xs border border-slate-200/80 font-black'
@@ -109,11 +124,11 @@ export const OperationsModule: React.FC<OperationsModuleProps> = ({
             initialPatient={activePatientContext}
             onNavigateToProcedures={(p) => {
               setActivePatientContext(p);
-              setActiveSubModule('procedures');
+              handleSubModuleSwitch('procedures');
             }}
             onNavigateToHistory={(p) => {
               setActivePatientContext(p);
-              setActiveSubModule('history');
+              handleSubModuleSwitch('history');
             }}
           />
         )}
@@ -125,7 +140,7 @@ export const OperationsModule: React.FC<OperationsModuleProps> = ({
             onNavigateToBillingProcedure={onNavigateToBillingProcedure}
             onNavigateToHistory={(p) => {
               setActivePatientContext(p);
-              setActiveSubModule('history');
+              handleSubModuleSwitch('history');
             }}
           />
         )}
@@ -136,11 +151,11 @@ export const OperationsModule: React.FC<OperationsModuleProps> = ({
             initialPatient={activePatientContext}
             onNavigateToExamination={(p) => {
               setActivePatientContext(p);
-              setActiveSubModule('examination');
+              handleSubModuleSwitch('examination');
             }}
             onNavigateToProcedure={(p) => {
               setActivePatientContext(p);
-              setActiveSubModule('procedures');
+              handleSubModuleSwitch('procedures');
             }}
           />
         )}
