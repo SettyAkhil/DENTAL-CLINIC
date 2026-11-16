@@ -511,7 +511,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     } else if (data.procedureName && data.procedureName.trim().length > 0) {
       procNames = [data.procedureName.trim()];
     } else {
-      procNames = ['Consultation'];
+      return res.status(400).json({ success: false, message: 'At least one procedure must be selected' });
     }
     // Remove accidental duplicate entries in the same submission list
     procNames = Array.from(new Set(procNames));

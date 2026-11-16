@@ -155,7 +155,7 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
 
   // Create Procedure Form State
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(initialPatient);
-  const [selectedProcedures, setSelectedProcedures] = useState<string[]>(['Consultation']);
+  const [selectedProcedures, setSelectedProcedures] = useState<string[]>([]);
   const [procedureSearch, setProcedureSearch] = useState('');
   const [customProcedureInput, setCustomProcedureInput] = useState('');
   const [procedureDate, setProcedureDate] = useState(new Date().toISOString().substring(0, 10));
@@ -164,7 +164,7 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
   const [customDentistName, setCustomDentistName] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<'Planned' | 'In Progress' | 'Completed'>('Planned');
-  const [charges, setCharges] = useState(500);
+  const [charges, setCharges] = useState(0);
 
   // Medications Prescribed (Clinical Notes Only - not linked to pharmacy or billing)
   const [medications, setMedications] = useState<
@@ -459,7 +459,7 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
 
   const navigateToCreate = (patientToPreselect?: Patient | null) => {
     setSelectedPatient(patientToPreselect || initialPatient || null);
-    setSelectedProcedures(['Consultation']);
+    setSelectedProcedures([]);
     setProcedureSearch('');
     setCustomProcedureInput('');
     setProcedureDate(new Date().toISOString().substring(0, 10));
@@ -468,7 +468,7 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
     setStatus('Planned');
     setFormError(null);
     setFormSuccess(null);
-    setCharges(500);
+    setCharges(0);
     setMedications([]);
 
     if (doctors.length > 0) {
@@ -487,8 +487,7 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
       (selectedPatient !== null && selectedPatient !== initialPatient) ||
       toothNumber.trim() !== '' ||
       description.trim() !== '' ||
-      selectedProcedures.length > 1 ||
-      (selectedProcedures.length === 1 && selectedProcedures[0] !== 'Consultation') ||
+      selectedProcedures.length > 0 ||
       customDentistName.trim() !== '' ||
       medications.some((m) => m.name.trim() !== '')
     );
@@ -506,7 +505,6 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
 
   const toggleProcedureSelection = (procName: string) => {
     if (selectedProcedures.includes(procName)) {
-      if (selectedProcedures.length === 1) return;
       const updated = selectedProcedures.filter((p) => p !== procName);
       setSelectedProcedures(updated);
       setCharges(calculateEstimatedCharges(updated));
@@ -531,7 +529,6 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
   };
 
   const removeProcedureChip = (procName: string) => {
-    if (selectedProcedures.length === 1) return;
     const updated = selectedProcedures.filter((p) => p !== procName);
     setSelectedProcedures(updated);
     setCharges(calculateEstimatedCharges(updated));
@@ -934,41 +931,14 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
 
             {/* 2. Search-Based Procedure Selection */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
-                    <Scissors className="w-4 h-4 text-blue-600" />
-                    <span>2. Procedures Selection (Search-Based)</span>
-                  </h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Search procedures by typing starting prefix or name. Select one or multiple procedures for this visit.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2 self-start sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPreviousViewMode('create');
-                      setViewMode('catalogue');
-                    }}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-                    title="View complete procedure catalogue"
-                  >
-                    <BookOpen className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Procedure List</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleOpenAddMasterModal(procedureSearch.trim())}
-                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-                    title="Add a new permanent procedure to hospital catalogue"
-                  >
-                    <Plus className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Add New Procedure</span>
-                  </button>
-                </div>
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                  <Scissors className="w-4 h-4 text-blue-600" />
+                  <span>2. Procedures Selection (Search-Based)</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Search procedures by typing starting prefix or name. Select one or multiple procedures for this visit.
+                </p>
               </div>
 
               {/* Selected Procedures Section */}
@@ -980,17 +950,15 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
                       {selectedProcedures.length}
                     </span>
                   </span>
-                  {selectedProcedures.length > 0 && (
-                    <span className="text-[11px] text-blue-800 font-bold">
-                      Est. Base Charges: ₹{charges}
-                    </span>
-                  )}
+                  <span className="text-[11px] text-blue-800 font-bold">
+                    Est. Base Charges: ₹{charges}
+                  </span>
                 </div>
 
                 {selectedProcedures.length === 0 ? (
-                  <div className="p-2 text-xs text-rose-600 font-medium">
-                    * Please search and select at least one procedure below to proceed.
-                  </div>
+                  <p className="text-xs text-slate-500 italic py-1">
+                    No procedures selected yet. Search below to add procedures for this visit.
+                  </p>
                 ) : (
                   <div className="flex flex-wrap gap-2 pt-1">
                     {selectedProcedures.map((proc) => {
@@ -1046,42 +1014,7 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
               </div>
 
               {/* Search Results Area */}
-              {procedureSearch.trim().length === 0 ? (
-                <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 space-y-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
-                    <Search className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-700">Search to Select Procedures</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5 max-w-md mx-auto">
-                      Type starting prefix characters or procedure name above to filter available procedures in real-time.
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPreviousViewMode('create');
-                        setViewMode('catalogue');
-                      }}
-                      className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
-                    >
-                      <BookOpen className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Browse Complete Catalogue ({procedureMasters.filter((m) => m.isActive).length})</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleOpenAddMasterModal()}
-                      className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>+ Add New Permanent Procedure</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
+              {procedureSearch.trim().length > 0 && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-700">
@@ -1144,16 +1077,16 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
                       })}
                     </div>
                   ) : (
-                    <div className="p-5 bg-amber-50/40 border border-amber-200 rounded-xl space-y-3">
+                    <div className="p-4 bg-amber-50/40 border border-amber-200 rounded-xl space-y-2.5">
                       <div className="flex items-center gap-2 text-amber-900 text-xs font-bold">
                         <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                         <span>No catalogue procedure found starting with "{procedureSearch}".</span>
                       </div>
                       <p className="text-[11px] text-slate-600">
-                        You can either use "{procedureSearch}" as a one-time custom procedure for this patient visit, or add it permanently to the hospital catalogue.
+                        You can use "{procedureSearch}" as a custom procedure for this visit only.
                       </p>
 
-                      <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                      <div className="pt-1">
                         <button
                           type="button"
                           onClick={() => {
@@ -1169,15 +1102,6 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
                         >
                           <Tag className="w-3.5 h-3.5 text-blue-600" />
                           <span>Use "{procedureSearch}" for this Visit Only</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleOpenAddMasterModal(procedureSearch.trim())}
-                          className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>+ Add to Permanent Catalogue</span>
                         </button>
                       </div>
                     </div>
