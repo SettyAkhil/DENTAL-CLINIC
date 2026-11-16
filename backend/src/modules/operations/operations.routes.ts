@@ -79,6 +79,7 @@ router.get('/history', authenticateToken, async (req: Request, res: Response) =>
           clinicalNotes: [],
           procedures: [],
           prescriptions: [],
+          prescribedMedications: [],
           appointment: cn.appointment || null,
         });
       }
@@ -111,12 +112,22 @@ router.get('/history', authenticateToken, async (req: Request, res: Response) =>
           clinicalNotes: [],
           procedures: [],
           prescriptions: [],
+          prescribedMedications: [],
           appointment: null,
         });
       }
 
       const visit = visitsMap.get(visitKey);
       visit.procedures.push(pr);
+
+      // Collect prescribed medications from procedures into the visit level
+      if (Array.isArray(pr.prescribedMedications) && pr.prescribedMedications.length > 0) {
+        pr.prescribedMedications.forEach((med: any) => {
+          if (med && med.name && !visit.prescribedMedications.some((m: any) => m.name === med.name && m.dosage === med.dosage && m.frequency === med.frequency)) {
+            visit.prescribedMedications.push(med);
+          }
+        });
+      }
 
       const docName = pr.doctor?.user?.fullName || pr.dentistName;
       if (docName && !visit.consultingDoctors.some((d: any) => d.name === docName)) {
@@ -197,6 +208,15 @@ async function generateProcedureCode(): Promise<string> {
   return `${prefix}${seq.toString().padStart(5, '0')}`;
 }
 
+const medicationEntrySchema = z.object({
+  name: z.string().min(1, 'Medicine name is required'),
+  dosage: z.string().optional().nullable(),
+  frequency: z.string().optional().nullable(),
+  duration: z.string().optional().nullable(),
+  instructions: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
 // POST /api/procedures - Create / Schedule a Procedure (Supports single or multiple procedures)
 const createProcedureSchema = z.object({
   patientId: z.string().min(1, 'Patient is required'),
@@ -214,6 +234,7 @@ const createProcedureSchema = z.object({
   description: z.string().optional().nullable(),
   status: z.string().optional().default('PLANNED'),
   clinicalNoteId: z.string().optional().nullable(),
+  prescribedMedications: z.array(medicationEntrySchema).optional().nullable(),
 });
 
 router.post('/', authenticateToken, async (req: Request, res: Response) => {
@@ -307,6 +328,18 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
       });
     }
 
+    // Filter prescribed medications (clinical documentation only - not linked to pharmacy or billing)
+    const validMedications = (data.prescribedMedications || [])
+      .filter((m) => m && typeof m.name === 'string' && m.name.trim().length > 0)
+      .map((m) => ({
+        name: m.name.trim(),
+        dosage: m.dosage?.trim() || null,
+        frequency: m.frequency?.trim() || null,
+        duration: m.duration?.trim() || null,
+        instructions: m.instructions?.trim() || null,
+        notes: m.notes?.trim() || null,
+      }));
+
     // 7. Create each procedure record
     const createdProcedures = [];
     for (const procName of procNames) {
@@ -350,6 +383,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
           clinicalNotes,
           clinicalNoteId: data.clinicalNoteId?.trim() || null,
           status: normalizedStatus,
+          prescribedMedications: validMedications.length > 0 ? (validMedications as any) : undefined,
         },
         include: {
           patient: { select: { id: true, name: true, patientCode: true, mobile: true } },

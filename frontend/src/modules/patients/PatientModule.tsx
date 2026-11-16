@@ -1191,6 +1191,79 @@ export const PatientModule: React.FC<PatientModuleProps> = ({
                                       </tbody>
                                     </table>
                                   </div>
+
+                                  {/* Prescribed Medications for this visit */}
+                                  {(() => {
+                                    const visitMeds = visitProcs
+                                      .flatMap((p: any) => p.prescribedMedications || [])
+                                      .filter(
+                                        (m: any, idx: number, arr: any[]) =>
+                                          m &&
+                                          m.name &&
+                                          arr.findIndex(
+                                            (x: any) =>
+                                              x.name === m.name &&
+                                              x.dosage === m.dosage &&
+                                              x.frequency === m.frequency
+                                          ) === idx
+                                      );
+
+                                    if (visitMeds.length === 0) return null;
+
+                                    return (
+                                      <div className="bg-emerald-50/30 border-t border-slate-200/80 p-3 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+                                            <Pill className="w-3.5 h-3.5 text-emerald-600" />
+                                            <span>Prescribed Medications ({visitMeds.length})</span>
+                                          </span>
+                                          <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                            Clinical Notes Only
+                                          </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                          {visitMeds.map((med: any, mIdx: number) => (
+                                            <div
+                                              key={mIdx}
+                                              className="p-2.5 bg-white rounded-lg border border-emerald-100 shadow-2xs space-y-1 text-xs"
+                                            >
+                                              <div className="flex items-center justify-between">
+                                                <span className="font-bold text-slate-900">{med.name}</span>
+                                                {med.dosage && (
+                                                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/70 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                                    {med.dosage}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="text-[11px] text-slate-600 flex flex-wrap gap-x-2">
+                                                {med.frequency && (
+                                                  <span>
+                                                    Freq: <strong>{med.frequency}</strong>
+                                                  </span>
+                                                )}
+                                                {med.duration && (
+                                                  <span>
+                                                    • Duration: <strong>{med.duration}</strong>
+                                                  </span>
+                                                )}
+                                                {med.instructions && (
+                                                  <span>
+                                                    • Take: <strong>{med.instructions}</strong>
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {med.notes && (
+                                                <p className="text-[11px] text-slate-500 italic bg-slate-50 p-1 rounded border border-slate-100">
+                                                  {med.notes}
+                                                </p>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               );
                             });

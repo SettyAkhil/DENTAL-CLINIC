@@ -507,12 +507,98 @@ export const ClinicalHistorySubModule: React.FC<ClinicalHistorySubModuleProps> =
                       )}
                     </div>
 
-                    {/* 5. Prescriptions / Medicines if any */}
+                    {/* 5. Prescribed Medications (Clinical Notes Only) */}
+                    {(() => {
+                      const visitPrescribedMeds =
+                        visit.prescribedMedications && visit.prescribedMedications.length > 0
+                          ? visit.prescribedMedications
+                          : (visit.procedures || [])
+                              .flatMap((p: any) => p.prescribedMedications || [])
+                              .filter(
+                                (m: any, idx: number, arr: any[]) =>
+                                  m &&
+                                  m.name &&
+                                  arr.findIndex(
+                                    (x: any) =>
+                                      x.name === m.name &&
+                                      x.dosage === m.dosage &&
+                                      x.frequency === m.frequency
+                                  ) === idx
+                              );
+
+                      if (visitPrescribedMeds.length === 0) return null;
+
+                      return (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                              <Pill className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>5. Prescribed Medications ({visitPrescribedMeds.length})</span>
+                              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full normal-case">
+                                Clinical Notes Only
+                              </span>
+                            </h4>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                            {visitPrescribedMeds.map((med: any, mIdx: number) => (
+                              <div
+                                key={mIdx}
+                                className="p-3 bg-emerald-50/40 rounded-xl border border-emerald-100 shadow-2xs space-y-1.5"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                                    <span className="w-4 h-4 rounded-full bg-emerald-200/80 text-emerald-900 flex items-center justify-center text-[10px] font-bold">
+                                      {mIdx + 1}
+                                    </span>
+                                    <span>{med.name}</span>
+                                  </span>
+                                  {med.dosage && (
+                                    <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100/70 border border-emerald-200 px-2 py-0.5 rounded-md">
+                                      {med.dosage}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600">
+                                  {med.frequency && (
+                                    <div>
+                                      <span className="text-slate-400">Freq:</span>{' '}
+                                      <strong className="text-slate-700">{med.frequency}</strong>
+                                    </div>
+                                  )}
+                                  {med.duration && (
+                                    <div>
+                                      <span className="text-slate-400">Duration:</span>{' '}
+                                      <strong className="text-slate-700">{med.duration}</strong>
+                                    </div>
+                                  )}
+                                  {med.instructions && (
+                                    <div>
+                                      <span className="text-slate-400">Instructions:</span>{' '}
+                                      <strong className="text-slate-700">{med.instructions}</strong>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {med.notes && (
+                                  <p className="text-[11px] text-slate-500 italic bg-white/70 p-1.5 rounded-lg border border-emerald-100">
+                                    Note: {med.notes}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* 6. Prescriptions / Pharmacy Sales if any */}
                     {visit.prescriptions.length > 0 && (
                       <div className="space-y-2">
                         <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                          <Pill className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>5. Dispensed Medicines & Prescriptions</span>
+                          <Pill className="w-3.5 h-3.5 text-slate-500" />
+                          <span>6. Dispensed Pharmacy Items & Sales</span>
                         </h4>
                         <div className="p-3 bg-emerald-50/40 rounded-xl border border-emerald-100 text-xs space-y-1">
                           {visit.prescriptions.map((sale: any) => (
@@ -663,6 +749,67 @@ export const ClinicalHistorySubModule: React.FC<ClinicalHistorySubModuleProps> =
                   </div>
                 )}
               </div>
+
+              {/* Prescribed Medications (Clinical Notes Only) in Dossier */}
+              {(() => {
+                const dossierMeds =
+                  activeDossierVisit.prescribedMedications && activeDossierVisit.prescribedMedications.length > 0
+                    ? activeDossierVisit.prescribedMedications
+                    : (activeDossierVisit.procedures || [])
+                        .flatMap((p: any) => p.prescribedMedications || [])
+                        .filter(
+                          (m: any, idx: number, arr: any[]) =>
+                            m &&
+                            m.name &&
+                            arr.findIndex(
+                              (x: any) =>
+                                x.name === m.name &&
+                                x.dosage === m.dosage &&
+                                x.frequency === m.frequency
+                            ) === idx
+                        );
+
+                if (dossierMeds.length === 0) return null;
+
+                return (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                        <Pill className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Prescribed Medications ({dossierMeds.length})</span>
+                      </h4>
+                      <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-semibold">
+                        Clinical Documentation Only
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {dossierMeds.map((med: any, idx: number) => (
+                        <div key={idx} className="p-3 bg-emerald-50/40 rounded-xl border border-emerald-100 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-900">{med.name}</span>
+                            {med.dosage && (
+                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                                {med.dosage}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-600">
+                            {med.frequency && <span>Freq: {med.frequency} • </span>}
+                            {med.duration && <span>Duration: {med.duration} • </span>}
+                            {med.instructions && <span>Take: {med.instructions}</span>}
+                          </div>
+                          {med.notes && (
+                            <p className="text-[11px] text-slate-500 italic bg-white/70 p-1.5 rounded border border-emerald-100">
+                              {med.notes}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Modal Footer */}

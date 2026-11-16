@@ -156,6 +156,15 @@ export interface ProcedureMaster {
   estimatedMins: number;
 }
 
+export interface PrescribedMedication {
+  name: string;
+  dosage?: string | null;
+  frequency?: string | null;
+  duration?: string | null;
+  instructions?: string | null;
+  notes?: string | null;
+}
+
 export interface Procedure {
   id: string;
   procedureCode: string;
@@ -173,6 +182,7 @@ export interface Procedure {
   status: 'PLANNED' | 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   clinicalNotes?: string | null;
   clinicalNoteId?: string | null;
+  prescribedMedications?: PrescribedMedication[] | null;
   operationInvoice?: {
     id: string;
     invoiceNumber: string;
@@ -196,6 +206,7 @@ export interface VisitHistoryRecord {
   clinicalNotes: ClinicalNote[];
   procedures: Procedure[];
   prescriptions: any[];
+  prescribedMedications?: PrescribedMedication[];
   appointment?: Appointment | null;
 }
 

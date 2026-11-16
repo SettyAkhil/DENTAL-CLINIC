@@ -17,6 +17,8 @@ import {
   Layers,
   User,
   Clock,
+  Pill,
+  Trash2,
 } from 'lucide-react';
 import api from '../../services/api';
 import { Procedure, ProcedureMaster, Patient, Doctor } from '../../types';
@@ -130,6 +132,48 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
   const [status, setStatus] = useState<'Planned' | 'In Progress' | 'Completed'>('Planned');
   const [charges, setCharges] = useState(500);
 
+  // Medications Prescribed (Clinical Notes Only - not linked to pharmacy or billing)
+  const [medications, setMedications] = useState<
+    Array<{
+      id: string;
+      name: string;
+      dosage: string;
+      frequency: string;
+      duration: string;
+      instructions: string;
+      notes: string;
+    }>
+  >([]);
+
+  const handleAddMedicineCard = () => {
+    setMedications((prev) => [
+      ...prev,
+      {
+        id: `med_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        name: '',
+        dosage: '',
+        frequency: '',
+        duration: '',
+        instructions: '',
+        notes: '',
+      },
+    ]);
+  };
+
+  const handleUpdateMedicine = (
+    id: string,
+    field: 'name' | 'dosage' | 'frequency' | 'duration' | 'instructions' | 'notes',
+    value: string
+  ) => {
+    setMedications((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const handleRemoveMedicineCard = (id: string) => {
+    setMedications((prev) => prev.filter((item) => item.id !== id));
+  };
+
   // Feedback states
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -237,6 +281,7 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
     setFormError(null);
     setFormSuccess(null);
     setCharges(500);
+    setMedications([]);
 
     if (doctors.length > 0) {
       setDoctorId(doctors[0].id);
@@ -256,9 +301,10 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
       description.trim() !== '' ||
       selectedProcedures.length > 1 ||
       (selectedProcedures.length === 1 && selectedProcedures[0] !== 'Consultation') ||
-      customDentistName.trim() !== ''
+      customDentistName.trim() !== '' ||
+      medications.some((m) => m.name.trim() !== '')
     );
-  }, [selectedPatient, initialPatient, toothNumber, description, selectedProcedures, customDentistName]);
+  }, [selectedPatient, initialPatient, toothNumber, description, selectedProcedures, customDentistName, medications]);
 
   const handleBackToList = () => {
     if (hasUnsavedChanges) {
@@ -331,6 +377,18 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
       if (status === 'In Progress') apiStatus = 'IN_PROGRESS';
       if (status === 'Completed') apiStatus = 'COMPLETED';
 
+      // Prepare prescribed medications (strictly clinical notes - no pharmacy or billing impact)
+      const validMeds = medications
+        .filter((m) => m && m.name && m.name.trim().length > 0)
+        .map((m) => ({
+          name: m.name.trim(),
+          dosage: m.dosage.trim() || null,
+          frequency: m.frequency.trim() || null,
+          duration: m.duration.trim() || null,
+          instructions: m.instructions.trim() || null,
+          notes: m.notes.trim() || null,
+        }));
+
       const res = await api.post('/procedures', {
         patientId: selectedPatient.id,
         doctorId: doctorId || null,
@@ -343,6 +401,7 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
         clinicalNotes: description.trim() || null,
         procedureDescription: description.trim() || null,
         status: apiStatus,
+        prescribedMedications: validMeds.length > 0 ? validMeds : undefined,
       });
 
       if (res.data.success) {
@@ -768,11 +827,190 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
               </div>
             </div>
 
-            {/* 3. Clinical & Schedule Details */}
+            {/* 3. Medications Prescribed (Clinical Notes Only) */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                    <Pill className="w-4 h-4 text-emerald-600" />
+                    <span>3. Medications Prescribed (Clinical Notes Only)</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Record medicines written in the doctor's prescription for clinical documentation. Strictly clinical notes — does NOT trigger pharmacy dispensing, inventory deduction, or billing charges.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddMedicineCard}
+                  className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition self-start sm:self-auto cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Another Medicine</span>
+                </button>
+              </div>
+
+              {/* Medicine Cards List */}
+              {medications.length === 0 ? (
+                <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                  <Pill className="w-7 h-7 text-slate-300 mx-auto mb-1.5" />
+                  <p className="text-xs font-semibold text-slate-600">No medicines prescribed for this visit</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5 mb-3">
+                    Optional: You can record one or more medicines from the doctor's prescription if prescribed.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleAddMedicineCard}
+                    className="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Add Prescribed Medicine</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3.5">
+                  {medications.map((med, index) => (
+                    <div
+                      key={med.id}
+                      className="p-4 bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-xl space-y-3 transition"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-200/70 pb-2">
+                        <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-[10px] font-black">
+                            {index + 1}
+                          </span>
+                          <span>Prescription Medicine #{index + 1}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMedicineCard(med.id)}
+                          className="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition cursor-pointer text-xs flex items-center gap-1 font-semibold"
+                          title="Remove medicine card"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span className="text-[11px]">Remove</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                        {/* Medicine Name (Required for this item) */}
+                        <div className="md:col-span-2">
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Medicine Name <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Amoxicillin, Paracetamol..."
+                            value={med.name}
+                            onChange={(e) => handleUpdateMedicine(med.id, 'name', e.target.value)}
+                            className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden font-medium"
+                          />
+                        </div>
+
+                        {/* Dosage */}
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Dosage (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 500 mg, 250 mg"
+                            value={med.dosage}
+                            onChange={(e) => handleUpdateMedicine(med.id, 'dosage', e.target.value)}
+                            className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                          />
+                        </div>
+
+                        {/* Frequency */}
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Frequency (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            list={`freq-list-${med.id}`}
+                            placeholder="e.g. Twice daily"
+                            value={med.frequency}
+                            onChange={(e) => handleUpdateMedicine(med.id, 'frequency', e.target.value)}
+                            className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                          />
+                          <datalist id={`freq-list-${med.id}`}>
+                            <option value="Once daily" />
+                            <option value="Twice daily" />
+                            <option value="Thrice daily" />
+                            <option value="Four times daily" />
+                            <option value="As needed (SOS)" />
+                          </datalist>
+                        </div>
+
+                        {/* Duration */}
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Duration (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            list={`dur-list-${med.id}`}
+                            placeholder="e.g. 5 days"
+                            value={med.duration}
+                            onChange={(e) => handleUpdateMedicine(med.id, 'duration', e.target.value)}
+                            className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                          />
+                          <datalist id={`dur-list-${med.id}`}>
+                            <option value="3 days" />
+                            <option value="5 days" />
+                            <option value="7 days" />
+                            <option value="10 days" />
+                            <option value="14 days" />
+                          </datalist>
+                        </div>
+
+                        {/* Instructions */}
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Instructions (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            list={`inst-list-${med.id}`}
+                            placeholder="e.g. After food"
+                            value={med.instructions}
+                            onChange={(e) => handleUpdateMedicine(med.id, 'instructions', e.target.value)}
+                            className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                          />
+                          <datalist id={`inst-list-${med.id}`}>
+                            <option value="After food" />
+                            <option value="Before food" />
+                            <option value="At bedtime" />
+                            <option value="With water" />
+                            <option value="Empty stomach" />
+                          </datalist>
+                        </div>
+                      </div>
+
+                      {/* Additional Notes */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Additional Notes (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Complete full course, avoid alcohol, take with plenty of water..."
+                          value={med.notes}
+                          onChange={(e) => handleUpdateMedicine(med.id, 'notes', e.target.value)}
+                          className="w-full text-xs p-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden text-slate-600"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 4. Treatment & Clinical Parameters */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-blue-600" />
-                <span>3. Treatment & Clinical Parameters</span>
+                <span>4. Treatment & Clinical Parameters</span>
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

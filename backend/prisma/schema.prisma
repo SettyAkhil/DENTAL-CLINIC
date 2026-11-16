@@ -256,6 +256,7 @@ model Procedure {
   clinicalNotes      String?
   clinicalNoteId     String?
   clinicalNote       ClinicalNote?    @relation(fields: [clinicalNoteId], references: [id])
+  prescribedMedications Json?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
