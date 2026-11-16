@@ -20,6 +20,142 @@ router.get('/masters', authenticateToken, async (req: Request, res: Response) =>
   }
 });
 
+// GET /api/procedures/history - Grouped Clinical & Treatment History by patient and visit date
+router.get('/history', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { patientId } = req.query;
+    const patientFilter = patientId ? { patientId: String(patientId) } : {};
+
+    const [clinicalNotes, procedures, pharmacySales] = await Promise.all([
+      prisma.clinicalNote.findMany({
+        where: patientFilter,
+        include: {
+          patient: { select: { id: true, name: true, patientCode: true, mobile: true, age: true, gender: true } },
+          doctor: { include: { user: { select: { fullName: true } } } },
+          appointment: true,
+          procedures: true,
+        },
+        orderBy: { consultationDate: 'desc' },
+      }),
+      prisma.procedure.findMany({
+        where: patientFilter,
+        include: {
+          patient: { select: { id: true, name: true, patientCode: true, mobile: true, age: true, gender: true } },
+          doctor: { include: { user: { select: { fullName: true } } } },
+          procedureMaster: true,
+          operationInvoice: { include: { payments: true } },
+        },
+        orderBy: { procedureDate: 'desc' },
+      }),
+      prisma.pharmacySale.findMany({
+        where: patientFilter,
+        include: {
+          items: { include: { medicine: true, batchStock: true } },
+        },
+        orderBy: { saleDate: 'desc' },
+      }),
+    ]);
+
+    // Group records by patientId and date (YYYY-MM-DD)
+    const visitsMap = new Map<string, any>();
+
+    const toDateKey = (d: any) => {
+      const date = new Date(d);
+      return isNaN(date.getTime()) ? 'Unspecified Date' : date.toISOString().substring(0, 10);
+    };
+
+    // 1. Ingest Clinical Notes
+    clinicalNotes.forEach((cn) => {
+      const dateKey = toDateKey(cn.consultationDate);
+      const visitKey = `${cn.patientId}_${dateKey}`;
+
+      if (!visitsMap.has(visitKey)) {
+        visitsMap.set(visitKey, {
+          id: visitKey,
+          visitDate: dateKey,
+          patientId: cn.patientId,
+          patient: cn.patient,
+          consultingDoctors: [],
+          clinicalNotes: [],
+          procedures: [],
+          prescriptions: [],
+          appointment: cn.appointment || null,
+        });
+      }
+
+      const visit = visitsMap.get(visitKey);
+      visit.clinicalNotes.push(cn);
+
+      const docName = cn.doctor?.user?.fullName;
+      if (docName && !visit.consultingDoctors.some((d: any) => d.name === docName)) {
+        visit.consultingDoctors.push({
+          id: cn.doctor.id,
+          name: docName,
+          specialization: cn.doctor.specialization,
+        });
+      }
+    });
+
+    // 2. Ingest Procedures
+    procedures.forEach((pr) => {
+      const dateKey = toDateKey(pr.procedureDate);
+      const visitKey = `${pr.patientId}_${dateKey}`;
+
+      if (!visitsMap.has(visitKey)) {
+        visitsMap.set(visitKey, {
+          id: visitKey,
+          visitDate: dateKey,
+          patientId: pr.patientId,
+          patient: pr.patient,
+          consultingDoctors: [],
+          clinicalNotes: [],
+          procedures: [],
+          prescriptions: [],
+          appointment: null,
+        });
+      }
+
+      const visit = visitsMap.get(visitKey);
+      visit.procedures.push(pr);
+
+      const docName = pr.doctor?.user?.fullName || pr.dentistName;
+      if (docName && !visit.consultingDoctors.some((d: any) => d.name === docName)) {
+        visit.consultingDoctors.push({
+          id: pr.doctor?.id || null,
+          name: docName,
+          specialization: pr.doctor?.specialization || 'DENTAL',
+        });
+      }
+    });
+
+    // 3. Ingest Pharmacy Sales / Medicines
+    pharmacySales.forEach((sale) => {
+      const dateKey = toDateKey(sale.saleDate);
+      const visitKey = `${sale.patientId}_${dateKey}`;
+
+      if (visitsMap.has(visitKey)) {
+        const visit = visitsMap.get(visitKey);
+        visit.prescriptions.push(sale);
+      }
+    });
+
+    // Convert to sorted array
+    const visits = Array.from(visitsMap.values()).sort((a, b) => {
+      return new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime();
+    });
+
+    res.json({
+      success: true,
+      visits,
+      totalVisits: visits.length,
+      totalNotes: clinicalNotes.length,
+      totalProcedures: procedures.length,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // GET /api/procedures
 router.get('/', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -77,6 +213,7 @@ const createProcedureSchema = z.object({
   procedureDescription: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   status: z.string().optional().default('PLANNED'),
+  clinicalNoteId: z.string().optional().nullable(),
 });
 
 router.post('/', authenticateToken, async (req: Request, res: Response) => {
@@ -211,6 +348,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
           procedureDate: parsedDate,
           charges: procCharge,
           clinicalNotes,
+          clinicalNoteId: data.clinicalNoteId?.trim() || null,
           status: normalizedStatus,
         },
         include: {

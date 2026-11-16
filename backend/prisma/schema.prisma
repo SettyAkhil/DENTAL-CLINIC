@@ -179,9 +179,18 @@ model ClinicalNote {
   notes                    String?      // 8. Notes
   advice                   String?      // 9. Advice
 
+  // Enhanced Clinical Examination Structure:
+  durationOfComplaint      String?
+  patientDescription       String?
+  clinicalFindings         Json?        // Array of { finding, toothNumber, severity, details, observations }
+  recommendedTreatments    Json?        // Array of { treatment, priority, advice, plannedDate, followUpDate }
+  followUpDate             DateTime?
+
   isLocked                 Boolean      @default(false)
   createdAt                DateTime     @default(now())
   updatedAt                DateTime     @updatedAt
+
+  procedures               Procedure[]
 
   @@index([patientId])
 }
@@ -245,6 +254,8 @@ model Procedure {
   charges            Float            @default(0.0)
   status             ProcedureStatus  @default(PLANNED)
   clinicalNotes      String?
+  clinicalNoteId     String?
+  clinicalNote       ClinicalNote?    @relation(fields: [clinicalNoteId], references: [id])
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
