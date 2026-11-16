@@ -24,6 +24,15 @@ export function App() {
   const [pendingAppointmentToBill, setPendingAppointmentToBill] = useState<any | null>(null);
 
   useEffect(() => {
+    // If URL has ?login or ?logout, clear session and stay on login
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('login') || params.has('logout') || params.has('auth')) {
+      localStorage.removeItem('clinic_token');
+      localStorage.removeItem('clinic_user');
+      setUser(null);
+      return;
+    }
+
     // Check existing session
     const savedUser = localStorage.getItem('clinic_user');
     const token = localStorage.getItem('clinic_token');
@@ -81,7 +90,7 @@ export function App() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-100 font-sans antialiased text-slate-800 overflow-hidden">
+    <div className="clinic-app-layout flex h-screen bg-slate-100 font-sans antialiased text-slate-800 overflow-hidden">
       {/* Sidebar */}
       <Sidebar
         activeTab={activeTab}

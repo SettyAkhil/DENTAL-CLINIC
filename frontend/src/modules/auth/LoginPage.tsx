@@ -1,480 +1,601 @@
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  Lock,
-  User,
-  AlertCircle,
-  Stethoscope,
-  Settings,
-  Users,
-  ChevronDown,
-  ArrowRight,
-  Eye,
-  EyeOff,
-  HelpCircle,
-  Check,
-} from 'lucide-react';
+import React, { useState } from 'react';
 import api from '../../services/api';
+import hospaiDentalLogo from '../../assets/hospai-dental-logo-dark.png';
+import hospaiLoginLogo from '../../assets/hospai-login-logo.png';
+import loginToothWatermark from '../../assets/login-tooth-watermark.png';
+import kalpraTechLogo from '../../assets/kalpra-tech-logo.png';
+import './LoginPage.css';
+
+type IconName =
+  | 'staff'
+  | 'doctor'
+  | 'admin'
+  | 'lock'
+  | 'tooth'
+  | 'eye'
+  | 'arrow'
+  | 'x'
+  | 'key';
+
+function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
+  const p: Record<IconName, React.ReactNode> = {
+    staff: (
+      <>
+        <circle cx="9" cy="8" r="4" />
+        <path d="M2 21a7 7 0 0 1 14 0M17 8h5M19.5 5.5v5" />
+      </>
+    ),
+    doctor: (
+      <>
+        <path d="M4.5 3v5a5.5 5.5 0 0 0 11 0V3" />
+        <path d="M10 13.5V17a4 4 0 0 0 8 0v-2.5" />
+        <circle cx="18" cy="14" r="1.5" />
+        <path d="M3 3h3M14 3h3" />
+      </>
+    ),
+    admin: (
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    ),
+    lock: (
+      <>
+        <rect x="5" y="10" width="14" height="11" rx="2" />
+        <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+      </>
+    ),
+    tooth: (
+      <path d="M7 3c-3 1-4 5-2 9 1 2 1 9 4 9 2 0 1-6 3-6s1 6 3 6c3 0 3-7 4-9 2-4 1-8-2-9-2-1-3 1-5 1S9 2 7 3Z" />
+    ),
+    eye: (
+      <>
+        <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6S2 12 2 12Z" />
+        <circle cx="12" cy="12" r="2.5" />
+      </>
+    ),
+    arrow: <path d="m5 12 14 0M14 7l5 5-5 5" />,
+    x: <path d="m6 6 12 12M18 6 6 18" />,
+    key: (
+      <>
+        <circle cx="7.5" cy="15.5" r="5.5" />
+        <path d="m21 2-9.6 9.6M15.5 7.5l3 3M18.5 4.5l3 3" />
+      </>
+    ),
+  };
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {p[name]}
+    </svg>
+  );
+}
 
 interface LoginProps {
   onLoginSuccess: (user: any) => void;
 }
 
 export const LoginPage: React.FC<LoginProps> = ({ onLoginSuccess }) => {
-  const [selectedRole, setSelectedRole] = useState<'RECEPTIONIST' | 'DOCTOR' | 'ADMIN'>('RECEPTIONIST');
-  const [usersInRole, setUsersInRole] = useState<any[]>([]);
-  const [selectedUsername, setSelectedUsername] = useState<string>('');
-  const [selectedDisplayName, setSelectedDisplayName] = useState<string>('');
+  const [role, setRole] = useState<'staff' | 'doctor' | 'admin'>('admin');
+  const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [loadingUsers, setLoadingUsers] = useState<boolean>(false);
+  const [remember, setRemember] = useState<boolean>(true);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
 
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Fetch users whenever selectedRole changes
-  useEffect(() => {
-    const fetchUsers = async () => {
-      setLoadingUsers(true);
-      setError('');
-      setIsDropdownOpen(false);
-
-      if (selectedRole === 'ADMIN') {
-        setSelectedUsername('admin');
-        setSelectedDisplayName('System Administrator (@admin)');
-        setLoadingUsers(false);
-        return;
-      }
-
-      try {
-        const res = await api.get('/auth/users-by-role', {
-          params: { role: selectedRole },
-        });
-
-        if (res.data.success && res.data.users.length > 0) {
-          setUsersInRole(res.data.users);
-          const first = res.data.users[0];
-          setSelectedUsername(first.username);
-          setSelectedDisplayName(`${first.fullName} (@${first.username})`);
-        } else {
-          setUsersInRole([]);
-          setSelectedUsername('');
-          setSelectedDisplayName('');
-        }
-      } catch (err: any) {
-        console.error('Failed to load users for role:', err);
-        setUsersInRole([]);
-      } finally {
-        setLoadingUsers(false);
-      }
-    };
-
-    fetchUsers();
-  }, [selectedRole]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedUsername) {
-      setError(`Please select or enter a valid ${selectedRole.toLowerCase()} account`);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!username.trim()) {
+      setError(
+        role === 'admin'
+          ? 'Please enter your admin username or email'
+          : role === 'doctor'
+          ? 'Please enter your doctor email or username'
+          : 'Please enter your work email or username'
+      );
+      return;
+    }
+    if (!password) {
+      setError('Please enter your password');
       return;
     }
 
-    setError('');
     setSubmitting(true);
+    setError('');
 
     try {
-      const response = await api.post('/auth/login', {
-        username: selectedUsername,
-        password,
+      const res = await api.post('/auth/login', {
+        username: username.trim(),
+        password: password,
       });
 
-      if (response.data.success) {
-        localStorage.setItem('clinic_token', response.data.token);
-        localStorage.setItem('clinic_user', JSON.stringify(response.data.user));
-        onLoginSuccess(response.data.user);
+      if (res.data && res.data.success) {
+        localStorage.setItem('clinic_token', res.data.token);
+        localStorage.setItem('clinic_user', JSON.stringify(res.data.user));
+        onLoginSuccess(res.data.user);
+      } else {
+        setError(res.data?.message || 'Login failed. Please verify credentials.');
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Invalid username or password. Please verify your credentials.');
+      const msg =
+        err.response?.data?.message ||
+        'Unable to connect to authentication server. Please check credentials or contact administrator.';
+      setError(msg);
     } finally {
       setSubmitting(false);
     }
   };
 
+  const fillQuickCredentials = (u: string, p: string, r: 'staff' | 'doctor' | 'admin') => {
+    setRole(r);
+    setUsername(u);
+    setPassword(p);
+    setShowHelpModal(false);
+    setError('');
+  };
+
   return (
-    <div className="relative min-h-screen lg:h-screen lg:overflow-hidden w-full flex flex-col justify-between font-sans selection:bg-sky-500 selection:text-white bg-gradient-to-br from-[#ebf6fd] via-[#f5faff] to-[#e5f2fc]">
-      
-      {/* Background vector wave accents (No circular rings) */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
-        <div
-          className="absolute inset-0 opacity-[0.14]"
-          style={{
-            backgroundImage: 'radial-gradient(#0284c7 1px, transparent 1px)',
-            backgroundSize: '28px 28px',
-          }}
+    <div className="login-page">
+      {/* SVG Background Scene with S-curve divider, arcs, dots & tooth watermark */}
+      <svg
+        className="login-scene"
+        viewBox="0 0 1600 800"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <rect className="login-scene-base" width="1600" height="800" />
+        <circle className="login-scene-arc login-scene-arc-top-a" cx="290" cy="-245" r="385" />
+        <circle className="login-scene-arc login-scene-arc-top-b" cx="290" cy="-245" r="455" />
+        <circle className="login-scene-arc login-scene-arc-bottom-a" cx="75" cy="1010" r="350" />
+        <circle className="login-scene-arc login-scene-arc-bottom-b" cx="75" cy="1010" r="420" />
+        <image href={loginToothWatermark} x="548" y="245" width="187" height="205" />
+        <path
+          className="login-scene-surface"
+          d="M815 0C714 128 713 190 754 278C801 377 830 421 776 520C735 596 651 698 570 800H1600V0H815Z"
         />
-
-        {/* Top-Right Smooth Vector Waves */}
-        <svg
-          className="absolute -top-20 -right-20 w-[680px] h-[680px] opacity-70"
-          viewBox="0 0 600 600"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <defs>
-            <linearGradient id="waveGradTop1" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#bae6fd" stopOpacity="0.8" />
-              <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.25" />
-            </linearGradient>
-            <linearGradient id="waveGradTop2" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#7dd3fc" stopOpacity="0.6" />
-              <stop offset="100%" stopColor="#0284c7" stopOpacity="0.15" />
-            </linearGradient>
-          </defs>
-          <path d="M 150 0 C 300 180, 420 80, 600 240 L 600 0 Z" fill="url(#waveGradTop1)" />
-          <path d="M 280 0 C 360 220, 480 140, 600 360 L 600 0 Z" fill="url(#waveGradTop2)" />
-        </svg>
-
-        {/* Bottom-Left Smooth Vector Waves */}
-        <svg
-          className="absolute -bottom-28 -left-28 w-[780px] h-[780px] opacity-75"
-          viewBox="0 0 700 700"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <defs>
-            <linearGradient id="waveGradBottom1" x1="0%" y1="100%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#bae6fd" stopOpacity="0.85" />
-              <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.2" />
-            </linearGradient>
-            <linearGradient id="waveGradBottom2" x1="0%" y1="100%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#0090e7" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#e0f2fe" stopOpacity="0.6" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M 0 700 L 700 700 C 520 540, 360 620, 200 440 C 90 320, 40 400, 0 460 Z"
-            fill="url(#waveGradBottom1)"
-          />
-          <path
-            d="M 0 700 L 580 700 C 420 580, 280 640, 140 500 C 60 420, 20 480, 0 540 Z"
-            fill="url(#waveGradBottom2)"
-          />
-        </svg>
-
-        {/* Soft Ambient Lighting Glows */}
-        <div className="absolute top-1/3 left-10 w-96 h-96 bg-cyan-200/30 blur-3xl pointer-events-none" />
-        <div className="absolute bottom-1/4 right-20 w-[28rem] h-[28rem] bg-sky-200/35 blur-3xl pointer-events-none" />
-      </div>
-
-      {/* The Authentic HospAI Dental Logo (Kept at exact approved top-left position) */}
-      <div className="absolute top-5 left-8 sm:top-6 sm:left-12 lg:top-7 lg:left-14 z-20">
-        <img
-          src="/assets/hospai-logo.png"
-          alt="HospAI Dental"
-          className="h-22 sm:h-26 w-auto object-contain transition-transform hover:scale-102"
-          style={{ imageRendering: '-webkit-optimize-contrast' }}
+        <circle
+          className="login-scene-right-arc login-scene-right-top-a"
+          cx="1555"
+          cy="-150"
+          r="275"
         />
-      </div>
+        <circle
+          className="login-scene-right-arc login-scene-right-top-b"
+          cx="1555"
+          cy="-150"
+          r="345"
+        />
+        <circle
+          className="login-scene-right-arc login-scene-right-bottom-a"
+          cx="1510"
+          cy="925"
+          r="280"
+        />
+        <circle
+          className="login-scene-right-arc login-scene-right-bottom-b"
+          cx="1510"
+          cy="925"
+          r="350"
+        />
+        <path
+          className="login-scene-divider-wide"
+          d="M815 0C714 128 713 190 754 278C801 377 830 421 776 520C735 596 651 698 570 800"
+        />
+        <path
+          className="login-scene-divider"
+          d="M815 0C714 128 713 190 754 278C801 377 830 421 776 520C735 596 651 698 570 800"
+        />
+      </svg>
 
-      {/* MAIN HERO VIEW: CLEAN, VERTICALLY BALANCED CONTENT */}
-      <main className="relative z-10 flex-1 flex items-center justify-center px-6 py-6 pt-24 md:pt-8 lg:px-16 my-auto">
-        <div className="w-full max-w-5xl flex flex-col md:flex-row items-center justify-between gap-10 lg:gap-14 mt-10 sm:mt-14 lg:mt-16">
-          
-          {/* LEFT COLUMN: HEADLINE & SUBTEXT (Vertically Centered) */}
-          <div className="flex-1 flex flex-col items-start justify-center max-w-lg">
-            <h1 className="text-3xl sm:text-4xl lg:text-[44px] font-black text-[#0a2540] leading-[1.15] tracking-tight">
-              Smarter Dental Care <br />
-              for a <span className="text-[#0090e7]">Healthier Smile</span>
-            </h1>
+      {/* Brand Hero Panel (Left) */}
+      <section className="login-brand-panel">
+        <div className="login-brand-content">
+          <img className="login-brand-logo" src={hospaiLoginLogo} alt="HospAI Dental" />
+          <div className="login-message">
+            <span>CLINICAL OPERATIONS PLATFORM</span>
+            <h1>Precision at every point of care.</h1>
+            <p>
+              One secure workspace for patient care, clinical records, treatment, pharmacy and
+              practice operations.
+            </p>
+          </div>
+          <div className="login-trust">
+            <div>
+              <Icon name="lock" size={17} />
+              <span>
+                <strong>Protected workspace</strong>
+                Role-based access and audited actions
+              </span>
+            </div>
+            <div>
+              <Icon name="tooth" size={17} />
+              <span>
+                <strong>Dental-first workflows</strong>
+                Built around the complete patient journey
+              </span>
+            </div>
+          </div>
+        </div>
+        <p>DentalCare Clinic · Standalone clinical workspace</p>
+      </section>
 
-            {/* Accent divider bar */}
-            <div className="w-16 h-1 bg-gradient-to-r from-[#0090e7] to-[#00d2d3] my-4 rounded-none" />
-
-            <p className="text-slate-600 text-sm sm:text-base leading-relaxed font-medium">
-              Manage patient records, streamline appointments & clinical workflows, and deliver superior dental care with HospAI.
+      {/* Main Login Form Panel (Right) */}
+      <main className="login-main">
+        <div className="login-card">
+          <img className="login-mobile-logo" src={hospaiDentalLogo} alt="HospAI Dental" />
+          <div className="login-heading">
+            <span className="login-secure-badge">SECURE SIGN IN</span>
+            <h2>
+              {role === 'staff' && 'Staff Portal'}
+              {role === 'doctor' && 'Doctor Portal'}
+              {role === 'admin' && 'Admin Portal'}
+            </h2>
+            <p>
+              {role === 'admin'
+                ? 'Sign in to system administration & configuration.'
+                : role === 'doctor'
+                ? 'Sign in to your clinical treatment workspace.'
+                : 'Sign in to the Clinic Staff workspace.'}
             </p>
           </div>
 
-          {/* VERTICAL DIVIDER LINE BETWEEN LEFT AND RIGHT */}
-          <div className="hidden md:block w-px h-80 bg-gradient-to-b from-transparent via-slate-300 to-transparent self-center shrink-0 mx-2" />
+          <div className="login-mode" role="tablist" aria-label="Choose login type">
+            <button
+              type="button"
+              className={role === 'staff' ? 'active' : ''}
+              onClick={() => {
+                setRole('staff');
+                setError('');
+              }}
+            >
+              <Icon name="staff" size={14} /> Staff
+            </button>
+            <button
+              type="button"
+              className={role === 'doctor' ? 'active' : ''}
+              onClick={() => {
+                setRole('doctor');
+                setError('');
+              }}
+            >
+              <Icon name="doctor" size={14} /> Doctor
+            </button>
+            <button
+              type="button"
+              className={role === 'admin' ? 'active' : ''}
+              onClick={() => {
+                setRole('admin');
+                setError('');
+              }}
+            >
+              <Icon name="admin" size={14} /> Admin
+            </button>
+          </div>
 
-          {/* RIGHT COLUMN: SQUARED LOGIN CARD (Moved slightly down) */}
-          <div className="flex-1 flex justify-center md:justify-end max-w-md w-full mt-6 md:mt-8">
-            <div className="relative w-full bg-white rounded-none shadow-[0_15px_40px_rgba(2,132,199,0.12)] border border-slate-200 p-7 sm:p-8">
-              
-              {/* Top border accent line */}
-              <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#0090e7] via-[#00b4d8] to-[#0070c9]" />
+          {error && (
+            <div className="login-error-alert" role="alert">
+              <span>{error}</span>
+            </div>
+          )}
 
-              {/* Card Header */}
-              <div className="text-center mb-5">
-                <h2 className="text-2xl font-black text-[#0a2540] tracking-tight">
-                  Welcome Back
-                </h2>
-                <p className="text-xs text-slate-500 mt-1 font-medium">
-                  Sign in to access your clinical dashboard
-                </p>
-                <div className="w-12 h-1 bg-[#0090e7] mx-auto mt-2 rounded-none" />
+          <form className="login-form" onSubmit={submit}>
+            <label>
+              <span className="login-form-label-text">
+                {role === 'admin'
+                  ? 'Admin username or email'
+                  : role === 'doctor'
+                  ? 'Doctor email or username'
+                  : 'Work email or username'}
+              </span>
+              <div className="login-input">
+                <Icon
+                  name={role === 'doctor' ? 'doctor' : role === 'admin' ? 'admin' : 'staff'}
+                  size={15}
+                />
+                <input
+                  type="text"
+                  placeholder={
+                    role === 'admin'
+                      ? 'Enter admin username or email'
+                      : role === 'doctor'
+                      ? 'Enter doctor email or username'
+                      : 'Enter work email or username'
+                  }
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="username"
+                  required
+                />
               </div>
-
-              {/* Error Alert */}
-              {error && (
-                <div className="mb-4 p-3 rounded-none bg-rose-50 border-l-4 border-rose-500 flex items-start gap-2.5 text-rose-700 text-xs">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                  <span className="font-medium">{error}</span>
-                </div>
-              )}
-
-              {/* Login Form */}
-              <form onSubmit={handleSubmit} className="space-y-4">
-                
-                {/* 1. ROLE SELECTION BUTTONS (Squared) */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-2 uppercase tracking-wider">
-                    Select Your Role
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {/* Receptionist */}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRole('RECEPTIONIST')}
-                      className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-none text-xs font-bold transition-all cursor-pointer ${
-                        selectedRole === 'RECEPTIONIST'
-                          ? 'bg-[#0090e7] text-white shadow-sm border border-[#0090e7]'
-                          : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50'
-                      }`}
-                    >
-                      <Users className="w-3.5 h-3.5" />
-                      <span>Receptionist</span>
-                    </button>
-
-                    {/* Doctor */}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRole('DOCTOR')}
-                      className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-none text-xs font-bold transition-all cursor-pointer ${
-                        selectedRole === 'DOCTOR'
-                          ? 'bg-[#0090e7] text-white shadow-sm border border-[#0090e7]'
-                          : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50'
-                      }`}
-                    >
-                      <Stethoscope className="w-3.5 h-3.5" />
-                      <span>Doctor</span>
-                    </button>
-
-                    {/* Admin */}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRole('ADMIN')}
-                      className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-none text-xs font-bold transition-all cursor-pointer ${
-                        selectedRole === 'ADMIN'
-                          ? 'bg-[#0a2540] text-white shadow-sm border border-[#0a2540]'
-                          : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50'
-                      }`}
-                    >
-                      <Settings className="w-3.5 h-3.5" />
-                      <span>Admin</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* 2. SELECT ACCOUNT / STAFF NAME (Squared) */}
-                <div className="relative" ref={dropdownRef}>
-                  <label className="block text-xs font-bold text-slate-800 mb-1.5">
-                    Select Account / Staff Name ({selectedRole})
-                  </label>
-
-                  {selectedRole === 'ADMIN' ? (
-                    // Admin Direct Box
-                    <div className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-none text-xs text-slate-700 font-semibold">
-                      <div className="flex items-center gap-2.5">
-                        <User className="w-4 h-4 text-slate-600" />
-                        <span>System Administrator (admin)</span>
-                      </div>
-                      <Check className="w-4 h-4 text-[#0090e7]" />
-                    </div>
-                  ) : (
-                    // Dropdown for Receptionist and Doctor
-                    <div>
-                      <button
-                        type="button"
-                        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                        disabled={loadingUsers}
-                        className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-none text-xs text-slate-700 transition cursor-pointer text-left focus:outline-none focus:ring-1 focus:ring-[#0090e7] focus:border-[#0090e7]"
-                      >
-                        <div className="flex items-center gap-2.5 truncate pr-2">
-                          <User className="w-4 h-4 text-slate-600 shrink-0" />
-                          <span className={`truncate font-medium ${selectedUsername ? 'text-slate-800 font-semibold' : 'text-slate-400'}`}>
-                            {loadingUsers
-                              ? `Loading ${selectedRole.toLowerCase()} accounts...`
-                              : selectedDisplayName || 'Choose your account'}
-                          </span>
-                        </div>
-                        <ChevronDown className={`w-4 h-4 text-slate-500 shrink-0 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
-                      </button>
-
-                      {/* Dropdown Menu Options */}
-                      {isDropdownOpen && (
-                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-300 shadow-xl z-50 p-1.5 max-h-52 overflow-y-auto space-y-1 rounded-none">
-                          {usersInRole.length === 0 ? (
-                            <div className="p-3 text-center text-xs text-amber-700 bg-amber-50 rounded-none">
-                              No {selectedRole.toLowerCase()} accounts found. Log in as <strong>Admin</strong> to add staff.
-                            </div>
-                          ) : (
-                            usersInRole.map((u) => {
-                              const isSelected = selectedUsername === u.username;
-                              return (
-                                <div
-                                  key={u.id}
-                                  onClick={() => {
-                                    setSelectedUsername(u.username);
-                                    setSelectedDisplayName(`${u.fullName} (@${u.username})`);
-                                    setIsDropdownOpen(false);
-                                  }}
-                                  className={`px-3.5 py-2.5 flex items-center justify-between text-xs cursor-pointer transition rounded-none ${
-                                    isSelected
-                                      ? 'bg-sky-50 text-sky-900 font-bold border border-sky-300'
-                                      : 'hover:bg-slate-50 text-slate-700'
-                                  }`}
-                                >
-                                  <div>
-                                    <div className="font-semibold text-slate-900">{u.fullName}</div>
-                                    <div className="text-[10px] text-slate-500 font-normal">
-                                      @{u.username} {u.doctorProfile ? `• ${u.doctorProfile.specialization === 'DENTAL' ? '🦷 Dental' : '🦴 Orthopedic'} (Fee: ₹${u.doctorProfile.consultationFee})` : ''}
-                                    </div>
-                                  </div>
-                                  {isSelected && <Check className="w-4 h-4 text-[#0090e7]" />}
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. ENTER PASSWORD (Squared) */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-800 mb-1.5">
-                    Enter Password
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                      <Lock className="w-4 h-4" />
-                    </div>
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-none text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#0090e7] focus:border-[#0090e7] focus:bg-white transition"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 hover:text-slate-800 cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* 4. SUBMIT BUTTON (Squared) */}
-                <button
-                  type="submit"
-                  disabled={submitting || !selectedUsername}
-                  className="w-full mt-2 py-3 px-6 bg-[#0090e7] hover:bg-[#0077b6] text-white rounded-none font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer text-xs disabled:opacity-50 uppercase tracking-wider"
-                >
-                  <ArrowRight className="w-4 h-4 stroke-[2.5]" />
-                  <span>
-                    {submitting ? 'Authenticating...' : `Sign In as ${selectedRole}`}
-                  </span>
-                </button>
-              </form>
-
-              {/* 5. NEED HELP / FOOTER LINK */}
-              <div className="mt-5 text-center">
+            </label>
+            <label>
+              <span className="login-form-label-text">Password</span>
+              <div className="login-input">
+                <Icon name="lock" size={15} />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
                 <button
                   type="button"
-                  onClick={() => setShowHelpModal(true)}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-[#0090e7] transition cursor-pointer"
+                  className="login-password-toggle"
+                  onClick={() => setShowPassword((value) => !value)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  <HelpCircle className="w-4 h-4 text-[#0090e7]" />
-                  <span>Need help? Contact Admin</span>
+                  <Icon name="eye" size={15} />
                 </button>
               </div>
+            </label>
+            <div className="login-options">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(event) => setRemember(event.target.checked)}
+                />
+                <span>Keep me signed in</span>
+              </label>
+              <button type="button" onClick={() => setShowHelpModal(true)}>
+                Forgot password?
+              </button>
             </div>
+
+            <button className="login-submit" type="submit" disabled={submitting}>
+              {submitting ? (
+                <span className="login-spinner" />
+              ) : (
+                <>
+                  <span>
+                    {role === 'doctor'
+                      ? 'Sign in as Doctor'
+                      : role === 'admin'
+                      ? 'Sign in as Admin'
+                      : 'Sign in as Staff'}
+                  </span>
+                  <span className="login-submit-arrow">→</span>
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="login-security">
+            <Icon name="lock" size={15} />
+            <span>
+              This is a synthetic prototype. No production authentication or patient data is used.
+            </span>
           </div>
+        </div>
+
+        <p className="login-help">
+          Need access help?{' '}
+          <button type="button" onClick={() => setShowHelpModal(true)}>
+            Contact clinic administration
+          </button>
+        </p>
+
+        <div className="login-powered">
+          <span>POWERED BY</span>
+          <img src={kalpraTechLogo} alt="Kalpra Tech" />
         </div>
       </main>
 
-      {/* FOOTER: PROMINENT KALPRA TECH LOGO (BOTTOM RIGHT - INCREASED SIZE) */}
-      <footer className="relative z-20 w-full px-8 py-4 flex justify-end items-center">
-        <div className="flex items-center">
-          <img
-            src="/assets/kalpra-tech-logo.png"
-            alt="Kalpra Tech - Your AI & Gen AI Partner"
-            className="h-14 sm:h-16 w-auto object-contain drop-shadow-xs"
-          />
-        </div>
-      </footer>
-
-      {/* ADMIN HELPER POPUP MODAL (Squared) */}
+      {/* Access Help Modal */}
       {showHelpModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-none max-w-sm w-full p-6 shadow-2xl border border-slate-300">
-            <div className="flex items-center gap-2 text-[#0090e7] mb-3">
-              <HelpCircle className="w-5 h-5" />
-              <h3 className="font-bold text-sm text-slate-900 uppercase tracking-wide">Administrator Access</h3>
-            </div>
-            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
-              To add new staff members (Receptionists or Doctors), log in using the initial default administrator credentials:
-            </p>
-            <div className="bg-slate-50 border border-slate-300 rounded-none p-3 text-xs space-y-1.5 mb-5 font-mono">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Role:</span>
-                <span className="font-bold text-slate-800">Admin</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Username:</span>
-                <span className="font-bold text-[#0090e7]">admin</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Password:</span>
-                <span className="font-bold text-[#0090e7]">admin123</span>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedRole('ADMIN');
-                  setSelectedUsername('admin');
-                  setPassword('admin123');
-                  setShowHelpModal(false);
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn"
+          style={{ position: 'fixed', inset: 0, zIndex: 100 }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-100 relative text-slate-800"
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: '16px',
+              maxWidth: '440px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              position: 'relative',
+            }}
+          >
+            <button
+              onClick={() => setShowHelpModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-full transition"
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+              }}
+              aria-label="Close dialog"
+            >
+              <Icon name="x" size={18} />
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div
+                style={{
+                  padding: '10px',
+                  backgroundColor: '#ecf8fc',
+                  color: '#0c6f93',
+                  borderRadius: '10px',
+                  display: 'flex',
                 }}
-                className="flex-1 py-2.5 px-3 bg-[#0090e7] hover:bg-[#0077b6] text-white rounded-none text-xs font-bold transition uppercase tracking-wider"
               >
-                Auto-fill Admin
-              </button>
+                <Icon name="key" size={20} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#183344' }}>
+                  Clinic Workspace Access
+                </h3>
+                <p style={{ margin: 0, fontSize: '12px', color: '#718692' }}>
+                  Staff roles &amp; test credentials
+                </p>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '12px', color: '#526b78', lineHeight: 1.5, marginBottom: '16px' }}>
+              Access is restricted to authorized clinic staff. For prototype testing, you can click
+              any pre-configured account:
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+              <div
+                onClick={() => fillQuickCredentials('priya.menon@dentalcare.example', 'admin123', 'doctor')}
+                style={{
+                  padding: '12px',
+                  borderRadius: '10px',
+                  border: '1px solid #dce8ea',
+                  cursor: 'pointer',
+                  backgroundColor: '#f3f9fa',
+                  transition: 'background-color 150ms',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#183344' }}>
+                      Dr. Priya Menon
+                    </span>
+                    <span
+                      style={{
+                        marginLeft: '8px',
+                        fontSize: '10px',
+                        backgroundColor: '#ddf3fa',
+                        color: '#0c6f93',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Doctor
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#2baad8', fontWeight: 600 }}>Use &rarr;</span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#718692', marginTop: '4px' }}>
+                  <span>email: priya.menon@dentalcare.example</span>
+                  <span style={{ margin: '0 6px' }}>&middot;</span>
+                  <span>pass: admin123</span>
+                </div>
+              </div>
+
+              <div
+                onClick={() => fillQuickCredentials('admin', 'admin123', 'admin')}
+                style={{
+                  padding: '12px',
+                  borderRadius: '10px',
+                  border: '1px solid #dce8ea',
+                  cursor: 'pointer',
+                  backgroundColor: '#f3f9fa',
+                  transition: 'background-color 150ms',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#183344' }}>
+                      System Administrator
+                    </span>
+                    <span
+                      style={{
+                        marginLeft: '8px',
+                        fontSize: '10px',
+                        backgroundColor: '#ddf3fa',
+                        color: '#0c6f93',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Admin
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#2baad8', fontWeight: 600 }}>Use &rarr;</span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#718692', marginTop: '4px' }}>
+                  <span>user: admin</span>
+                  <span style={{ margin: '0 6px' }}>&middot;</span>
+                  <span>pass: admin123</span>
+                </div>
+              </div>
+
+              <div
+                onClick={() => fillQuickCredentials('admin', 'admin123', 'staff')}
+                style={{
+                  padding: '12px',
+                  borderRadius: '10px',
+                  border: '1px solid #dce8ea',
+                  cursor: 'pointer',
+                  backgroundColor: '#f3f9fa',
+                  transition: 'background-color 150ms',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#183344' }}>
+                      Clinic Staff / Reception
+                    </span>
+                    <span
+                      style={{
+                        marginLeft: '8px',
+                        fontSize: '10px',
+                        backgroundColor: '#ddf3fa',
+                        color: '#0c6f93',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Staff
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#2baad8', fontWeight: 600 }}>Use &rarr;</span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#718692', marginTop: '4px' }}>
+                  <span>user: admin</span>
+                  <span style={{ margin: '0 6px' }}>&middot;</span>
+                  <span>pass: admin123</span>
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                paddingTop: '12px',
+                borderTop: '1px solid #eaf0f1',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                fontSize: '11px',
+                color: '#718692',
+              }}
+            >
+              <span>Admin contact: support@hospai.internal</span>
               <button
                 type="button"
                 onClick={() => setShowHelpModal(false)}
-                className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-none text-xs font-semibold transition"
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: '#eef6f9',
+                  border: 'none',
+                  borderRadius: '6px',
+                  color: '#183344',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
               >
                 Close
               </button>
@@ -485,3 +606,5 @@ export const LoginPage: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     </div>
   );
 };
+
+export default LoginPage;
