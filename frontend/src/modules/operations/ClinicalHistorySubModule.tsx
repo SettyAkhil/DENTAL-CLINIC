@@ -123,10 +123,6 @@ export const ClinicalHistorySubModule: React.FC<ClinicalHistorySubModuleProps> =
       {/* Top Header */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 mb-1">
-            <History className="w-4 h-4" />
-            <span>Sub-module 3 of Operations & Procedures</span>
-          </div>
           <h2 className="text-xl font-black text-slate-900 tracking-tight">Clinical & Treatment History</h2>
           <p className="text-xs text-slate-500 mt-0.5">
             View comprehensive chronological records of patient consultations, doctor findings, recommendations, and performed procedures.

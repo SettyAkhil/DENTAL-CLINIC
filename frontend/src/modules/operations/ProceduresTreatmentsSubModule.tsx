@@ -650,10 +650,6 @@ export const ProceduresTreatmentsSubModule: React.FC<ProceduresTreatmentsSubModu
           {/* Top Bar */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 mb-1">
-                <Scissors className="w-4 h-4" />
-                <span>Sub-module 2 of Operations & Procedures</span>
-              </div>
               <h2 className="text-xl font-black text-slate-900 tracking-tight">Procedures & Treatments</h2>
               <p className="text-xs text-slate-500 mt-0.5">
                 Record and manage clinical dental procedures actually performed during patient visits.

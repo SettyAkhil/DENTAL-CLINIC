@@ -3,7 +3,6 @@ import {
   FileText,
   User,
   Calendar,
-  Stethoscope,
   Plus,
   Trash2,
   AlertCircle,
@@ -316,10 +315,6 @@ export const ClinicalExaminationSubModule: React.FC<ClinicalExaminationSubModule
       {/* Top Banner & Context */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 mb-1">
-            <Stethoscope className="w-4 h-4" />
-            <span>Sub-module 1 of Operations & Procedures</span>
-          </div>
           <h2 className="text-xl font-black text-slate-900 tracking-tight">Clinical Notes & Examination</h2>
           <p className="text-xs text-slate-500 mt-0.5">
             Record patient-reported complaints, consulting doctor, clinical findings, and recommended treatments.
