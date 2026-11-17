@@ -496,21 +496,6 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
               </p>
             </div>
           </div>
-
-          {/* Quick Action Button */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                resetCreateForm();
-                setActiveTab('create');
-              }}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Lab Report</span>
-            </button>
-          </div>
         </div>
 
         {/* Tab Navigation */}
@@ -556,7 +541,7 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
             }`}
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Add Lab Report (Emailed PDF)</span>
+            <span>Add Lab Report</span>
           </button>
         </div>
       </div>
@@ -654,36 +639,7 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
             </div>
           </div>
 
-          {/* Action Callout: Receive & Log Email Report */}
-          <div className="p-4 bg-linear-to-r from-indigo-50 to-blue-50 border border-indigo-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-indigo-600 text-white shrink-0 mt-0.5">
-                <Upload className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-indigo-950">
-                  Received a Patient Lab Report via Email?
-                </h3>
-                <p className="text-xs text-indigo-800 mt-0.5">
-                  Select the patient, pick the dental lab item (Crown, Bridge, Denture, Aligners, Veneer), attach the emailed PDF report, and add doctor notes in one quick step.
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                resetCreateForm();
-                setActiveTab('create');
-              }}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Log Emailed Report</span>
-            </button>
-          </div>
-
-          {/* Quick Investigation Presets & Recent Reports */}
+          {/* Recent Reports Table */}
           <div className="bg-white border border-slate-200">
             <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -860,8 +816,8 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
                 </select>
               </div>
 
-              {/* Reset & Refresh */}
-              <div className="flex items-center gap-2">
+              {/* Reset Filters */}
+              <div>
                 <button
                   type="button"
                   onClick={() => {
@@ -871,22 +827,10 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
                     setEndDateFilter('');
                     fetchReports();
                   }}
-                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition cursor-pointer flex items-center justify-center gap-1.5 flex-1"
+                  className="w-full px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Reset</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetCreateForm();
-                    setActiveTab('create');
-                  }}
-                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer flex-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Add Report</span>
+                  <span>Reset Filters</span>
                 </button>
               </div>
             </div>
