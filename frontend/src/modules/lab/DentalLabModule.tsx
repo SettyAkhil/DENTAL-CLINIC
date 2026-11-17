@@ -42,17 +42,18 @@ interface DentalLabModuleProps {
   onNavigateToPatient?: (patientId: string) => void;
 }
 
-// Common Investigation / Test presets in dental clinic practice
-const COMMON_TEST_PRESETS = [
-  { label: 'CBCT 3D Scan (Implant / Endo)', value: 'CBCT 3D Scan', category: 'CBCT' },
-  { label: 'OPG (Panoramic Dental X-Ray)', value: 'OPG Panoramic X-Ray', category: 'OPG' },
-  { label: 'Complete Blood Count (CBC)', value: 'Complete Blood Count (CBC)', category: 'BLOOD' },
-  { label: 'Blood Glucose & HbA1c', value: 'Blood Glucose & HbA1c', category: 'BLOOD' },
-  { label: 'Bleeding & Clotting Time (BT/CT)', value: 'Bleeding & Clotting Time (BT/CT)', category: 'BLOOD' },
-  { label: 'Biopsy / Histopathology', value: 'Biopsy / Histopathology Report', category: 'BIOPSY' },
-  { label: 'Microbial Culture & Sensitivity', value: 'Microbial Culture & Sensitivity', category: 'BIOPSY' },
-  { label: 'Lateral Cephalogram', value: 'Lateral Cephalogram', category: 'OPG' },
-  { label: 'Digital Study Model Scan', value: 'Digital Study Model Scan', category: 'OTHER' },
+// Dental-specific laboratory prosthetics & appliances presets
+const DENTAL_LAB_PRESETS = [
+  { label: 'Crown (Zirconia / Ceramic / PFM)', value: 'Crown Fabrication', category: 'CROWN' },
+  { label: 'Bridge (Fixed Partial Denture)', value: 'Dental Bridge', category: 'BRIDGE' },
+  { label: 'Complete Denture (CD)', value: 'Complete Denture', category: 'DENTURE' },
+  { label: 'Removable Partial Denture (RPD)', value: 'Removable Partial Denture (RPD)', category: 'DENTURE' },
+  { label: 'Cast Partial Denture (CPD)', value: 'Cast Partial Denture (CPD)', category: 'DENTURE' },
+  { label: 'Dental Veneer / Laminate', value: 'Dental Veneer / Laminate', category: 'VENEER' },
+  { label: 'Clear Aligners', value: 'Clear Aligners', category: 'ALIGNER' },
+  { label: 'Orthodontic Retainer / Splint', value: 'Orthodontic Retainer / Splint', category: 'RETAINER' },
+  { label: 'Night Guard / Occlusal Splint', value: 'Night Guard / Occlusal Splint', category: 'SPLINT' },
+  { label: 'Inlay / Onlay', value: 'Inlay / Onlay', category: 'INLAY' },
 ];
 
 function formatBytes(bytes?: number): string {
@@ -491,7 +492,7 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Record and archive patient diagnostic reports, CBCT/OPG imaging scans, and pathology results received via email.
+                Record and archive patient dental laboratory work, prosthetic fabrications, and lab results received via email.
               </p>
             </div>
           </div>
@@ -664,7 +665,7 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
                   Received a Patient Lab Report via Email?
                 </h3>
                 <p className="text-xs text-indigo-800 mt-0.5">
-                  Select the patient, pick the investigation type (CBCT, OPG, Blood, Biopsy), attach the emailed PDF report, and add doctor findings in one quick step.
+                  Select the patient, pick the dental lab item (Crown, Bridge, Denture, Aligners, Veneer), attach the emailed PDF report, and add doctor notes in one quick step.
                 </p>
               </div>
             </div>
@@ -848,12 +849,14 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
                   onChange={(e) => setCategoryFilter(e.target.value)}
                   className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 focus:bg-white focus:border-indigo-500 focus:outline-hidden"
                 >
-                  <option value="ALL">All Investigation Types</option>
-                  <option value="CBCT">CBCT 3D Scans</option>
-                  <option value="OPG">OPG / Panoramic X-Rays</option>
-                  <option value="Blood">Blood Investigations</option>
-                  <option value="Biopsy">Biopsy / Histopathology</option>
-                  <option value="Culture">Culture & Sensitivity</option>
+                  <option value="ALL">All Dental Lab Works</option>
+                  <option value="Crown">Crowns</option>
+                  <option value="Bridge">Bridges</option>
+                  <option value="Denture">Dentures (CD / RPD)</option>
+                  <option value="Veneer">Veneers & Laminates</option>
+                  <option value="Aligner">Clear Aligners</option>
+                  <option value="Retainer">Retainers & Splints</option>
+                  <option value="Inlay">Inlays / Onlays</option>
                 </select>
               </div>
 
@@ -1149,20 +1152,20 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
               </div>
             </div>
 
-            {/* 2. INVESTIGATION / TEST TYPE */}
+            {/* 2. DENTAL LAB WORK & PROSTHETIC ITEM */}
             <div className="space-y-3 pt-3 border-t border-slate-100">
               <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5 pb-1 border-b border-slate-100">
                 <FlaskConical className="w-3.5 h-3.5 text-indigo-600" />
-                <span>2. Investigation & Test Details *</span>
+                <span>2. Dental Lab Work & Prosthetic Item *</span>
               </h3>
 
               {/* Quick Presets */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Choose Common Test Preset or Type Custom:
+                  Choose Common Dental Lab Work Preset or Type Custom:
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  {COMMON_TEST_PRESETS.map((preset) => {
+                  {DENTAL_LAB_PRESETS.map((preset) => {
                     const isSelected = testType === preset.value;
                     return (
                       <button
@@ -1195,7 +1198,7 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
                         : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                     }`}
                   >
-                    + Other / Custom Test
+                    + Other / Custom Work
                   </button>
                 </div>
               </div>
@@ -1203,12 +1206,12 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
               {/* Free-text test type input */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Investigation / Test Name *
+                  Dental Work / Item Name *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. CBCT 3D Scan Mandible, Complete Blood Count, Biopsy of buccal mucosa..."
+                  placeholder="e.g. Zirconia Crown (#16), 3-Unit PFM Bridge (#24-#26), Upper Complete Denture, Clear Aligners Stage 1..."
                   value={customTestType}
                   onChange={(e) => {
                     setCustomTestType(e.target.value);
@@ -1350,7 +1353,7 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
               <div>
                 <textarea
                   rows={3}
-                  placeholder="Record doctor's interpretation or key findings from the report (e.g. Adequate bone height at 36 for 4.2mm implant; Normal platelet count 2.4 lakhs; No bony pathology detected)..."
+                  placeholder="Record doctor notes or lab specifications (e.g. Tooth #16 Zirconia shade A2; Margin supragingival; Occlusion checked and approved)..."
                   value={doctorFindings}
                   onChange={(e) => setDoctorFindings(e.target.value)}
                   className="w-full text-xs p-3 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden"
