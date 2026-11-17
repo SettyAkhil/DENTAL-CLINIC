@@ -785,7 +785,7 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
         <div className="space-y-4">
           {/* Search & Filters Bar */}
           <div className="bg-white border border-slate-200 p-4 space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* Search Bar */}
               <div className="md:col-span-2 relative">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
@@ -814,24 +814,6 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
                   <option value="Retainer">Retainers & Splints</option>
                   <option value="Inlay">Inlays / Onlays</option>
                 </select>
-              </div>
-
-              {/* Reset Filters */}
-              <div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setCategoryFilter('ALL');
-                    setStartDateFilter('');
-                    setEndDateFilter('');
-                    fetchReports();
-                  }}
-                  className="w-full px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Reset Filters</span>
-                </button>
               </div>
             </div>
 
