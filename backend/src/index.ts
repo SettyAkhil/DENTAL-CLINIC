@@ -17,6 +17,7 @@ import operationBillingRoutes from './modules/billing/operation-billing.routes';
 import pharmacyRoutes from './modules/pharmacy/pharmacy.routes';
 import operationRoutes from './modules/operations/operations.routes';
 import reportsRoutes from './modules/reports/reports.routes';
+import dentalChartRoutes from './modules/dental-chart/dental-chart.routes';
 
 dotenv.config();
 
@@ -50,6 +51,7 @@ app.use('/api/billing/procedure', operationBillingRoutes);
 app.use('/api/pharmacy', pharmacyRoutes);
 app.use('/api/procedures', operationRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/dental-chart', dentalChartRoutes);
 
 // Health Route
 app.get('/api/health', async (req: Request, res: Response) => {
