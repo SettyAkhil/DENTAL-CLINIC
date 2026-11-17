@@ -7,12 +7,8 @@ import {
   FileText,
   Image as ImageIcon,
   CheckCircle2,
-  Clock,
-  Truck,
-  Package,
   Calendar,
   AlertCircle,
-  ExternalLink,
   Download,
   Trash2,
   Eye,
@@ -24,8 +20,11 @@ import {
   Info,
   Check,
   ChevronRight,
-  ShieldCheck,
-  Send,
+  ExternalLink,
+  Edit2,
+  Save,
+  Clock,
+  Sparkles,
 } from 'lucide-react';
 import api from '../../services/api';
 import { getSocket } from '../../services/socket';
@@ -35,8 +34,6 @@ import {
   LabItem,
   LabDocument,
   LabPhoto,
-  LabCaseStatus,
-  LabItemType,
   Appointment,
 } from '../../types';
 import { PatientSearchSelect } from '../../components/PatientSearchSelect';
@@ -45,11 +42,32 @@ interface DentalLabModuleProps {
   onNavigateToPatient?: (patientId: string) => void;
 }
 
+// Common Investigation / Test presets in dental clinic practice
+const COMMON_TEST_PRESETS = [
+  { label: 'CBCT 3D Scan (Implant / Endo)', value: 'CBCT 3D Scan', category: 'CBCT' },
+  { label: 'OPG (Panoramic Dental X-Ray)', value: 'OPG Panoramic X-Ray', category: 'OPG' },
+  { label: 'Complete Blood Count (CBC)', value: 'Complete Blood Count (CBC)', category: 'BLOOD' },
+  { label: 'Blood Glucose & HbA1c', value: 'Blood Glucose & HbA1c', category: 'BLOOD' },
+  { label: 'Bleeding & Clotting Time (BT/CT)', value: 'Bleeding & Clotting Time (BT/CT)', category: 'BLOOD' },
+  { label: 'Biopsy / Histopathology', value: 'Biopsy / Histopathology Report', category: 'BIOPSY' },
+  { label: 'Microbial Culture & Sensitivity', value: 'Microbial Culture & Sensitivity', category: 'BIOPSY' },
+  { label: 'Lateral Cephalogram', value: 'Lateral Cephalogram', category: 'OPG' },
+  { label: 'Digital Study Model Scan', value: 'Digital Study Model Scan', category: 'OTHER' },
+];
+
+function formatBytes(bytes?: number): string {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
 export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
   onNavigateToPatient,
 }) => {
-  // Navigation within Dental Lab: 'dashboard' | 'cases' | 'create'
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'cases' | 'create'>('dashboard');
+  // Navigation tabs: 'dashboard' | 'reports' | 'create'
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'reports' | 'create'>('dashboard');
 
   // Loading & Feedback
   const [loading, setLoading] = useState(false);
@@ -59,85 +77,37 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
   // Dashboard Data
   const [dashboardCounts, setDashboardCounts] = useState<{
     totalCases: number;
-    sentToLab: number;
-    receivedFromLab: number;
-    readyForHandover: number;
-    handedOver: number;
+    totalReports: number;
+    reportsThisMonth: number;
+    reportsToday: number;
+    reportsWithPdf: number;
   }>({
     totalCases: 0,
-    sentToLab: 0,
-    receivedFromLab: 0,
-    readyForHandover: 0,
-    handedOver: 0,
+    totalReports: 0,
+    reportsThisMonth: 0,
+    reportsToday: 0,
+    reportsWithPdf: 0,
   });
-  const [recentCases, setRecentCases] = useState<LabCase[]>([]);
+  const [recentReports, setRecentReports] = useState<LabCase[]>([]);
 
-  // Lab Cases List & Filters
-  const [cases, setCases] = useState<LabCase[]>([]);
+  // Reports List & Filters
+  const [reports, setReports] = useState<LabCase[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [itemTypeFilter, setItemTypeFilter] = useState<string>('ALL');
-  const [labFilter, setLabFilter] = useState<string>('ALL');
+  const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [startDateFilter, setStartDateFilter] = useState('');
   const [endDateFilter, setEndDateFilter] = useState('');
 
-  // Selected Case for Detailed Modal / View
-  const [selectedCase, setSelectedCase] = useState<LabCase | null>(null);
+  // Selected Report for Detailed Modal / View
+  const [selectedReport, setSelectedReport] = useState<LabCase | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // Handover Modal State
-  const [isHandoverModalOpen, setIsHandoverModalOpen] = useState(false);
-  const [handoverDate, setHandoverDate] = useState(new Date().toISOString().substring(0, 10));
-  const [handoverRemarks, setHandoverRemarks] = useState('');
-  const [handoverSubmitting, setHandoverSubmitting] = useState(false);
+  // Editing notes inside Detail Modal
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [editableNotes, setEditableNotes] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
 
-  // Receive Items Modal State
-  const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
-  const [receiveDate, setReceiveDate] = useState(new Date().toISOString().substring(0, 10));
-  const [receiveNotes, setReceiveNotes] = useState('');
-  const [makeReadyForHandover, setMakeReadyForHandover] = useState(true);
-  const [receiveSubmitting, setReceiveSubmitting] = useState(false);
-
-  // Lightbox Image Viewer
+  // Lightbox Image Viewer for radiographs/photos
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
-
-  // Create / Edit Case Form State
-  const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
-  const [formPatient, setFormPatient] = useState<Patient | null>(null);
-  const [patientAppointments, setPatientAppointments] = useState<Appointment[]>([]);
-  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string>('');
-  const [labName, setLabName] = useState('');
-  const [labContact, setLabContact] = useState('');
-  const [labPhone, setLabPhone] = useState('');
-  const [labEmail, setLabEmail] = useState('');
-  const [labRefNumber, setLabRefNumber] = useState('');
-  const [sentDate, setSentDate] = useState(new Date().toISOString().substring(0, 10));
-  const [expectedDate, setExpectedDate] = useState('');
-  const [generalNotes, setGeneralNotes] = useState('');
-  const [formItems, setFormItems] = useState<
-    Array<{
-      id?: string;
-      itemType: LabItemType;
-      customItemName: string;
-      toothNumber: string;
-      material: string;
-      shade: string;
-      description: string;
-    }>
-  >([
-    {
-      itemType: 'CROWN',
-      customItemName: '',
-      toothNumber: '',
-      material: 'Zirconia',
-      shade: 'A2',
-      description: '',
-    },
-  ]);
-  const [pendingDocsToUpload, setPendingDocsToUpload] = useState<File[]>([]);
-  const [pendingPhotosToUpload, setPendingPhotosToUpload] = useState<File[]>([]);
-  const [formSubmitting, setFormSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
 
   // Document & Photo uploading in Detail Modal
   const [uploadingDoc, setUploadingDoc] = useState(false);
@@ -146,70 +116,98 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   // -------------------------------------------------------------
+  // CREATE REPORT FORM STATE (Emailed Report Log)
+  // -------------------------------------------------------------
+  const [formPatient, setFormPatient] = useState<Patient | null>(null);
+  const [patientAppointments, setPatientAppointments] = useState<Appointment[]>([]);
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string>('');
+  const [testType, setTestType] = useState<string>('');
+  const [customTestType, setCustomTestType] = useState<string>('');
+  const [reportDate, setReportDate] = useState(new Date().toISOString().substring(0, 10));
+  const [labName, setLabName] = useState('Diagnostic Laboratory');
+  const [labRefNumber, setLabRefNumber] = useState('');
+  const [doctorFindings, setDoctorFindings] = useState('');
+  const [pendingDocsToUpload, setPendingDocsToUpload] = useState<File[]>([]);
+  const [pendingPhotosToUpload, setPendingPhotosToUpload] = useState<File[]>([]);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // -------------------------------------------------------------
   // DATA FETCHING
   // -------------------------------------------------------------
   const fetchDashboard = async () => {
     try {
       const res = await api.get('/lab/dashboard');
       if (res.data.success) {
-        setDashboardCounts(res.data.counts);
-        setRecentCases(res.data.recentCases || []);
+        setDashboardCounts(res.data.counts || {});
+        setRecentReports(res.data.recentCases || []);
       }
     } catch (err) {
       console.error('Error fetching lab dashboard:', err);
     }
   };
 
-  const fetchCases = async () => {
+  const fetchReports = async () => {
     setLoading(true);
+    setActionError(null);
     try {
       const params: any = {};
       if (searchQuery.trim()) params.search = searchQuery.trim();
-      if (statusFilter !== 'ALL') params.status = statusFilter;
-      if (itemTypeFilter !== 'ALL') params.itemType = itemTypeFilter;
-      if (labFilter !== 'ALL') params.labName = labFilter;
+      if (categoryFilter !== 'ALL') params.testType = categoryFilter;
       if (startDateFilter) params.startDate = startDateFilter;
       if (endDateFilter) params.endDate = endDateFilter;
 
       const res = await api.get('/lab/cases', { params });
       if (res.data.success) {
-        setCases(res.data.cases || []);
+        setReports(res.data.cases || []);
       }
-    } catch (err) {
-      console.error('Error fetching lab cases:', err);
+    } catch (err: any) {
+      console.error('Error fetching lab reports:', err);
+      setActionError(err.response?.data?.message || 'Failed to load lab reports');
     } finally {
       setLoading(false);
     }
   };
 
-  const refreshCaseDetails = async (caseId: string) => {
+  // Refresh single report in state / modal
+  const refreshSelectedReport = async (reportId: string) => {
     try {
-      const res = await api.get(`/lab/cases/${caseId}`);
+      const res = await api.get(`/lab/cases/${reportId}`);
       if (res.data.success) {
-        setSelectedCase(res.data.case);
-        // Also update in list
-        setCases((prev) =>
-          prev.map((c) => (c.id === caseId ? res.data.case : c))
+        setSelectedReport(res.data.case);
+        setReports((prev) =>
+          prev.map((c) => (c.id === reportId ? res.data.case : c))
         );
       }
     } catch (err) {
-      console.error('Error refreshing case details:', err);
+      console.error('Error refreshing report detail:', err);
     }
   };
 
+  // Initial load
   useEffect(() => {
     fetchDashboard();
-    fetchCases();
+    fetchReports();
   }, []);
 
-  // Listen to Socket.IO real-time events
+  // When filters or tab change
+  useEffect(() => {
+    if (activeTab === 'reports') {
+      fetchReports();
+    } else if (activeTab === 'dashboard') {
+      fetchDashboard();
+    }
+  }, [activeTab, categoryFilter, startDateFilter, endDateFilter]);
+
+  // Real-time updates via Socket.IO
   useEffect(() => {
     const socket = getSocket();
+    if (!socket) return;
+
     const handleLabUpdate = () => {
       fetchDashboard();
-      fetchCases();
-      if (selectedCase) {
-        refreshCaseDetails(selectedCase.id);
+      if (activeTab === 'reports') {
+        fetchReports();
       }
     };
 
@@ -222,351 +220,150 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
       socket.off('lab:updated', handleLabUpdate);
       socket.off('lab:deleted', handleLabUpdate);
     };
-  }, [selectedCase]);
+  }, [activeTab]);
 
-  // When patient is selected in Create Case form, load their appointments
+  // Auto-clear success banner after 5 seconds
   useEffect(() => {
-    if (formPatient) {
-      api
-        .get('/appointments', { params: { patientId: formPatient.id } })
-        .then((res) => {
-          if (res.data.success) {
-            setPatientAppointments(res.data.appointments || []);
-          }
-        })
-        .catch(() => setPatientAppointments([]));
-    } else {
+    if (actionSuccess) {
+      const timer = setTimeout(() => setActionSuccess(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [actionSuccess]);
+
+  // When patient changes in Add form, fetch their appointments
+  useEffect(() => {
+    if (!formPatient) {
       setPatientAppointments([]);
       setSelectedAppointmentId('');
+      return;
     }
+    const fetchPatientAppointments = async () => {
+      try {
+        const res = await api.get(`/appointments/patient/${formPatient.id}`);
+        if (res.data.success && Array.isArray(res.data.appointments)) {
+          setPatientAppointments(res.data.appointments);
+        }
+      } catch (err) {
+        setPatientAppointments([]);
+      }
+    };
+    fetchPatientAppointments();
   }, [formPatient]);
 
-  // Distinct laboratory names for filtering
-  const distinctLabs = useMemo(() => {
-    const set = new Set<string>();
-    cases.forEach((c) => {
-      if (c.labName && c.labName.trim()) set.add(c.labName.trim());
-    });
-    return Array.from(set);
-  }, [cases]);
-
   // -------------------------------------------------------------
-  // ITEM MANAGEMENT IN FORM
+  // RESET FORM
   // -------------------------------------------------------------
-  const handleAddItemRow = () => {
-    setFormItems((prev) => [
-      ...prev,
-      {
-        itemType: 'CROWN',
-        customItemName: '',
-        toothNumber: '',
-        material: 'Zirconia',
-        shade: 'A2',
-        description: '',
-      },
-    ]);
-  };
-
-  const handleRemoveItemRow = (index: number) => {
-    if (formItems.length === 1) return;
-    setFormItems((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleItemChange = (index: number, field: string, value: any) => {
-    setFormItems((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
-    );
-  };
-
-  // Reset Create Form
   const resetCreateForm = () => {
-    setEditingCaseId(null);
     setFormPatient(null);
+    setPatientAppointments([]);
     setSelectedAppointmentId('');
-    setLabName('');
-    setLabContact('');
-    setLabPhone('');
-    setLabEmail('');
+    setTestType('');
+    setCustomTestType('');
+    setReportDate(new Date().toISOString().substring(0, 10));
+    setLabName('Diagnostic Laboratory');
     setLabRefNumber('');
-    setSentDate(new Date().toISOString().substring(0, 10));
-    setExpectedDate('');
-    setGeneralNotes('');
-    setFormItems([
-      {
-        itemType: 'CROWN',
-        customItemName: '',
-        toothNumber: '',
-        material: 'Zirconia',
-        shade: 'A2',
-        description: '',
-      },
-    ]);
+    setDoctorFindings('');
     setPendingDocsToUpload([]);
     setPendingPhotosToUpload([]);
     setFormError(null);
   };
 
-  const openCreateCaseView = (patientToPreselect?: Patient | null) => {
-    resetCreateForm();
-    if (patientToPreselect) {
-      setFormPatient(patientToPreselect);
-    }
-    setActiveTab('create');
-  };
-
-  const openEditCaseView = (c: LabCase) => {
-    setEditingCaseId(c.id);
-    setFormPatient(c.patient);
-    setSelectedAppointmentId(c.appointmentId || '');
-    setLabName(c.labName);
-    setLabContact(c.labContact || '');
-    setLabPhone(c.labPhone || '');
-    setLabEmail(c.labEmail || '');
-    setLabRefNumber(c.labRefNumber || '');
-    setSentDate(c.sentDate ? c.sentDate.substring(0, 10) : '');
-    setExpectedDate(c.expectedDate ? c.expectedDate.substring(0, 10) : '');
-    setGeneralNotes(c.generalNotes || '');
-    setFormItems(
-      c.items && c.items.length > 0
-        ? c.items.map((it) => ({
-            id: it.id,
-            itemType: it.itemType,
-            customItemName: it.customItemName || '',
-            toothNumber: it.toothNumber,
-            material: it.material || '',
-            shade: it.shade || '',
-            description: it.description || '',
-          }))
-        : [
-            {
-              itemType: 'CROWN',
-              customItemName: '',
-              toothNumber: '',
-              material: '',
-              shade: '',
-              description: '',
-            },
-          ]
-    );
-    setPendingDocsToUpload([]);
-    setPendingPhotosToUpload([]);
-    setFormError(null);
-    setIsDetailModalOpen(false);
-    setActiveTab('create');
-  };
-
   // -------------------------------------------------------------
-  // SUBMIT CREATE / EDIT CASE
+  // SUBMIT NEW LAB REPORT (From Email)
   // -------------------------------------------------------------
-  const handleSaveLabCase = async (e: React.FormEvent) => {
+  const handleCreateReport = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
     if (!formPatient) {
-      setFormError('Please search and select an existing patient.');
-      return;
-    }
-    if (!labName.trim()) {
-      setFormError('Laboratory name is required.');
+      setFormError('Please select a registered patient.');
       return;
     }
 
-    // Validate items
-    for (let i = 0; i < formItems.length; i++) {
-      if (!formItems[i].toothNumber.trim()) {
-        setFormError(`Item #${i + 1}: Tooth number / region is required.`);
-        return;
-      }
+    const finalTestType = testType === 'CUSTOM' ? customTestType.trim() : (testType || customTestType.trim());
+    if (!finalTestType) {
+      setFormError('Please select or enter the Investigation / Test Type.');
+      return;
     }
 
     setFormSubmitting(true);
     try {
-      let savedCaseId = editingCaseId;
+      // 1. Create Case in database
+      const payload = {
+        patientId: formPatient.id,
+        appointmentId: selectedAppointmentId || null,
+        testType: finalTestType,
+        labName: labName.trim() || 'Diagnostic Laboratory',
+        labRefNumber: labRefNumber.trim() || null,
+        sentDate: reportDate,
+        generalNotes: doctorFindings.trim() || null,
+        status: 'RECEIVED_FROM_LAB',
+      };
 
-      if (editingCaseId) {
-        // Update existing case
-        const res = await api.put(`/lab/cases/${editingCaseId}`, {
-          labName: labName.trim(),
-          labContact: labContact.trim() || null,
-          labPhone: labPhone.trim() || null,
-          labEmail: labEmail.trim() || null,
-          labRefNumber: labRefNumber.trim() || null,
-          sentDate,
-          expectedDate: expectedDate || null,
-          generalNotes: generalNotes.trim() || null,
-          items: formItems.map((item) => ({
-            itemType: item.itemType,
-            customItemName: item.customItemName?.trim() || null,
-            toothNumber: item.toothNumber.trim(),
-            material: item.material?.trim() || null,
-            shade: item.shade?.trim() || null,
-            description: item.description?.trim() || null,
-          })),
-        });
-        if (res.data.success) {
-          setActionSuccess(`Lab case ${res.data.case.caseNumber} updated successfully.`);
-        }
-      } else {
-        // Create new case
-        const res = await api.post('/lab/cases', {
-          patientId: formPatient.id,
-          appointmentId: selectedAppointmentId || null,
-          labName: labName.trim(),
-          labContact: labContact.trim() || null,
-          labPhone: labPhone.trim() || null,
-          labEmail: labEmail.trim() || null,
-          labRefNumber: labRefNumber.trim() || null,
-          sentDate,
-          expectedDate: expectedDate || null,
-          generalNotes: generalNotes.trim() || null,
-          items: formItems.map((item) => ({
-            itemType: item.itemType,
-            customItemName: item.customItemName?.trim() || null,
-            toothNumber: item.toothNumber.trim(),
-            material: item.material?.trim() || null,
-            shade: item.shade?.trim() || null,
-            description: item.description?.trim() || null,
-          })),
-        });
-
-        if (res.data.success) {
-          savedCaseId = res.data.case.id;
-          setActionSuccess(`Lab case ${res.data.case.caseNumber} created successfully.`);
-        }
+      const res = await api.post('/lab/cases', payload);
+      if (!res.data.success) {
+        throw new Error(res.data.message || 'Failed to record lab report');
       }
 
-      // Upload any pending documents
-      if (savedCaseId && pendingDocsToUpload.length > 0) {
-        const formData = new FormData();
-        pendingDocsToUpload.forEach((file) => formData.append('documents', file));
-        await api.post(`/lab/cases/${savedCaseId}/documents`, formData, {
+      const createdCaseId = res.data.case.id;
+
+      // 2. Upload PDF files if any were selected
+      if (pendingDocsToUpload.length > 0) {
+        const docFormData = new FormData();
+        pendingDocsToUpload.forEach((file) => docFormData.append('documents', file));
+        await api.post(`/lab/cases/${createdCaseId}/documents`, docFormData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
       }
 
-      // Upload any pending photos
-      if (savedCaseId && pendingPhotosToUpload.length > 0) {
-        const formData = new FormData();
-        pendingPhotosToUpload.forEach((file) => formData.append('photos', file));
-        await api.post(`/lab/cases/${savedCaseId}/photos`, formData, {
+      // 3. Upload photo/scan files if any were selected
+      if (pendingPhotosToUpload.length > 0) {
+        const photoFormData = new FormData();
+        pendingPhotosToUpload.forEach((file) => photoFormData.append('photos', file));
+        await api.post(`/lab/cases/${createdCaseId}/photos`, photoFormData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
       }
 
+      setActionSuccess(`Lab report for ${formPatient.name} recorded and archived successfully.`);
       resetCreateForm();
+      setActiveTab('reports');
+      fetchReports();
       fetchDashboard();
-      fetchCases();
-      setActiveTab('cases');
     } catch (err: any) {
-      console.error('Error saving lab case:', err);
-      setFormError(err.response?.data?.message || 'Failed to save lab case.');
+      console.error('Error saving lab report:', err);
+      setFormError(err.response?.data?.message || err.message || 'Failed to save lab report.');
     } finally {
       setFormSubmitting(false);
     }
   };
 
   // -------------------------------------------------------------
-  // RECEIVE FROM LAB ACTION
+  // DOCUMENT MANAGEMENT IN MODAL
   // -------------------------------------------------------------
-  const handleOpenReceiveModal = (c: LabCase) => {
-    setSelectedCase(c);
-    setReceiveDate(new Date().toISOString().substring(0, 10));
-    setReceiveNotes('');
-    setMakeReadyForHandover(true);
-    setIsReceiveModalOpen(true);
-  };
-
-  const handleConfirmReceive = async () => {
-    if (!selectedCase) return;
-    setReceiveSubmitting(true);
-    try {
-      const res = await api.post(`/lab/cases/${selectedCase.id}/receive`, {
-        receivedDate: receiveDate,
-        notes: receiveNotes.trim() || null,
-        makeReadyForHandover,
-      });
-
-      if (res.data.success) {
-        setActionSuccess(
-          `Case ${selectedCase.caseNumber} recorded as Received from Laboratory.`
-        );
-        setIsReceiveModalOpen(false);
-        refreshCaseDetails(selectedCase.id);
-        fetchDashboard();
-        fetchCases();
-      }
-    } catch (err: any) {
-      console.error('Error recording received case:', err);
-      setActionError(err.response?.data?.message || 'Failed to record received items.');
-    } finally {
-      setReceiveSubmitting(false);
-    }
-  };
-
-  // -------------------------------------------------------------
-  // PATIENT HANDOVER ACTION
-  // -------------------------------------------------------------
-  const handleOpenHandoverModal = (c: LabCase) => {
-    setSelectedCase(c);
-    setHandoverDate(new Date().toISOString().substring(0, 10));
-    setHandoverRemarks('');
-    setIsHandoverModalOpen(true);
-  };
-
-  const handleConfirmHandover = async () => {
-    if (!selectedCase) return;
-    setHandoverSubmitting(true);
-    try {
-      const res = await api.post(`/lab/cases/${selectedCase.id}/handover`, {
-        handoverDate,
-        remarks: handoverRemarks.trim() || null,
-      });
-
-      if (res.data.success) {
-        setActionSuccess(
-          `Case ${selectedCase.caseNumber} recorded as Handed Over to patient ${selectedCase.patient.name}.`
-        );
-        setIsHandoverModalOpen(false);
-        refreshCaseDetails(selectedCase.id);
-        fetchDashboard();
-        fetchCases();
-      }
-    } catch (err: any) {
-      console.error('Error recording handover:', err);
-      setActionError(err.response?.data?.message || 'Failed to record patient handover.');
-    } finally {
-      setHandoverSubmitting(false);
-    }
-  };
-
-  // -------------------------------------------------------------
-  // DOCUMENT & PHOTO MANAGEMENT IN MODAL
-  // -------------------------------------------------------------
-  const handleUploadDocumentsModal = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!selectedCase || !e.target.files || e.target.files.length === 0) return;
+  const handleUploadAdditionalDocument = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!selectedReport || !e.target.files || e.target.files.length === 0) return;
     const files = Array.from(e.target.files);
 
-    const formData = new FormData();
     for (const f of files) {
       if (!f.name.toLowerCase().endsWith('.pdf') && f.type !== 'application/pdf') {
         alert(`File "${f.name}" is not a PDF. Only PDF files are accepted.`);
         return;
       }
-      formData.append('documents', f);
     }
 
     setUploadingDoc(true);
     try {
-      const res = await api.post(`/lab/cases/${selectedCase.id}/documents`, formData, {
+      const formData = new FormData();
+      files.forEach((file) => formData.append('documents', file));
+      await api.post(`/lab/cases/${selectedReport.id}/documents`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      if (res.data.success) {
-        setActionSuccess(`${files.length} document(s) uploaded successfully.`);
-        refreshCaseDetails(selectedCase.id);
-      }
+      await refreshSelectedReport(selectedReport.id);
+      setActionSuccess(`${files.length} PDF document(s) uploaded successfully.`);
     } catch (err: any) {
-      console.error('Error uploading documents:', err);
-      alert(err.response?.data?.message || 'Failed to upload PDF documents.');
+      console.error('Error uploading document:', err);
+      alert(err.response?.data?.message || 'Failed to upload PDF document.');
     } finally {
       setUploadingDoc(false);
       if (docInputRef.current) docInputRef.current.value = '';
@@ -576,207 +373,196 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
   const handleDeleteDocument = async (docId: string) => {
     if (!window.confirm('Are you sure you want to delete this PDF document?')) return;
     try {
-      const res = await api.delete(`/lab/documents/${docId}`);
-      if (res.data.success && selectedCase) {
-        refreshCaseDetails(selectedCase.id);
+      await api.delete(`/lab/documents/${docId}`);
+      if (selectedReport) {
+        await refreshSelectedReport(selectedReport.id);
       }
+      setActionSuccess('Document deleted successfully.');
     } catch (err: any) {
+      console.error('Error deleting document:', err);
       alert(err.response?.data?.message || 'Failed to delete document.');
     }
   };
 
-  const handleUploadPhotosModal = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!selectedCase || !e.target.files || e.target.files.length === 0) return;
-    const files = Array.from(e.target.files);
-
-    const formData = new FormData();
-    for (const f of files) {
-      if (!f.type.startsWith('image/') && !/\.(jpg|jpeg|png|webp)$/i.test(f.name)) {
-        alert(`File "${f.name}" is not a valid image (JPG, PNG).`);
-        return;
-      }
-      formData.append('photos', f);
-    }
-    formData.append('receivedDate', new Date().toISOString().substring(0, 10));
-
-    setUploadingPhoto(true);
+  // -------------------------------------------------------------
+  // SAVE EDITED NOTES IN MODAL
+  // -------------------------------------------------------------
+  const handleSaveNotes = async () => {
+    if (!selectedReport) return;
+    setSavingNotes(true);
     try {
-      const res = await api.post(`/lab/cases/${selectedCase.id}/photos`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const res = await api.put(`/lab/cases/${selectedReport.id}`, {
+        generalNotes: editableNotes.trim() || null,
       });
       if (res.data.success) {
-        setActionSuccess(`${files.length} photo(s) uploaded successfully.`);
-        refreshCaseDetails(selectedCase.id);
+        setSelectedReport(res.data.case);
+        setReports((prev) =>
+          prev.map((c) => (c.id === selectedReport.id ? res.data.case : c))
+        );
+        setIsEditingNotes(false);
+        setActionSuccess('Doctor findings and notes updated.');
       }
     } catch (err: any) {
-      console.error('Error uploading photos:', err);
-      alert(err.response?.data?.message || 'Failed to upload photos.');
+      console.error('Error updating notes:', err);
+      alert(err.response?.data?.message || 'Failed to update notes.');
     } finally {
-      setUploadingPhoto(false);
-      if (photoInputRef.current) photoInputRef.current.value = '';
+      setSavingNotes(false);
     }
   };
 
-  const handleDeletePhoto = async (photoId: string) => {
-    if (!window.confirm('Are you sure you want to delete this photograph?')) return;
-    try {
-      const res = await api.delete(`/lab/photos/${photoId}`);
-      if (res.data.success && selectedCase) {
-        refreshCaseDetails(selectedCase.id);
-      }
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to delete photo.');
-    }
-  };
+  // -------------------------------------------------------------
+  // DELETE ENTIRE LAB REPORT
+  // -------------------------------------------------------------
+  const handleDeleteReport = async (report: LabCase) => {
+    const confirmMsg = `Are you sure you want to permanently delete the lab report for ${report.patient.name} (${report.caseNumber})? This will delete all attached PDFs.`;
+    if (!window.confirm(confirmMsg)) return;
 
-  const handleDeleteCase = async (c: LabCase) => {
-    if (
-      !window.confirm(
-        `Are you sure you want to permanently delete Lab Case ${c.caseNumber} for patient ${c.patient.name}? This will remove all items, attached PDFs, and photos.`
-      )
-    ) {
-      return;
-    }
     try {
-      const res = await api.delete(`/lab/cases/${c.id}`);
+      const res = await api.delete(`/lab/cases/${report.id}`);
       if (res.data.success) {
-        setActionSuccess(`Case ${c.caseNumber} deleted successfully.`);
-        setIsDetailModalOpen(false);
+        setActionSuccess(`Lab report ${report.caseNumber} deleted successfully.`);
+        if (selectedReport?.id === report.id) {
+          setIsDetailModalOpen(false);
+          setSelectedReport(null);
+        }
+        fetchReports();
         fetchDashboard();
-        fetchCases();
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to delete lab case.');
+      console.error('Error deleting report:', err);
+      alert(err.response?.data?.message || 'Failed to delete report.');
     }
   };
 
-  // Status Badge Helper
-  const renderStatusBadge = (status: LabCaseStatus) => {
-    switch (status) {
-      case 'SENT_TO_LAB':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-800 border border-blue-200 text-xs font-bold uppercase tracking-wider">
-            <Truck className="w-3 h-3 text-blue-600" />
-            <span>Sent to Lab</span>
-          </span>
-        );
-      case 'RECEIVED_FROM_LAB':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-900 border border-amber-300 text-xs font-bold uppercase tracking-wider">
-            <Package className="w-3 h-3 text-amber-600" />
-            <span>Received from Lab</span>
-          </span>
-        );
-      case 'READY_FOR_HANDOVER':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 text-purple-900 border border-purple-300 text-xs font-bold uppercase tracking-wider">
-            <Clock className="w-3 h-3 text-purple-600" />
-            <span>Ready for Handover</span>
-          </span>
-        );
-      case 'HANDED_OVER':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-900 border border-emerald-300 text-xs font-bold uppercase tracking-wider">
-            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-            <span>Handed Over</span>
-          </span>
-        );
-      case 'CANCELLED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold uppercase tracking-wider">
-            <X className="w-3 h-3 text-slate-500" />
-            <span>Cancelled</span>
-          </span>
-        );
-      default:
-        return null;
+  // Helper: Extract primary test name from items or notes
+  const getPrimaryTestName = (c: LabCase): string => {
+    if (c.items && c.items.length > 0) {
+      const first = c.items[0];
+      return first.customItemName || first.description || first.itemType || 'Diagnostic Report';
     }
+    return 'Diagnostic Lab Report';
   };
 
-  // Format File Size
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
+  // Filtered reports for search
+  const filteredReports = useMemo(() => {
+    if (!searchQuery.trim()) return reports;
+    const q = searchQuery.toLowerCase().trim();
+    return reports.filter((c) => {
+      const name = c.patient?.name?.toLowerCase() || '';
+      const code = c.patient?.patientCode?.toLowerCase() || '';
+      const phone = c.patient?.mobile || '';
+      const caseNum = c.caseNumber?.toLowerCase() || '';
+      const lab = c.labName?.toLowerCase() || '';
+      const notes = c.generalNotes?.toLowerCase() || '';
+      const ref = c.labRefNumber?.toLowerCase() || '';
+      const test = getPrimaryTestName(c).toLowerCase();
+
+      return (
+        name.includes(q) ||
+        code.includes(q) ||
+        phone.includes(q) ||
+        caseNum.includes(q) ||
+        lab.includes(q) ||
+        notes.includes(q) ||
+        ref.includes(q) ||
+        test.includes(q)
+      );
+    });
+  }, [reports, searchQuery]);
 
   return (
     <div className="space-y-6">
-      {/* ------------------------------------------------------------- */}
-      {/* TOP HEADER & MODULE NAVIGATION TABS                           */}
-      {/* ------------------------------------------------------------- */}
-      <div className="bg-white p-5 border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 bg-indigo-600 text-white flex items-center justify-center shrink-0">
-            <FlaskConical className="w-6 h-6" />
+      {/* ============================================================== */}
+      {/* 1. MODULE BANNER & MAIN TABS                                   */}
+      {/* ============================================================== */}
+      <div className="bg-white border border-slate-200 shadow-xs">
+        <div className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-indigo-600 text-white rounded-none">
+              <FlaskConical className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-black tracking-tight text-slate-900">
+                  Dental Lab & Diagnostic Reports
+                </h1>
+                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+                  Patient E-mail Reports Archive
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Record and archive patient diagnostic reports, CBCT/OPG imaging scans, and pathology results received via email.
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-              <span>Dental Lab Work Management</span>
-              <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 uppercase tracking-wider">
-                External Lab Module
-              </span>
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Maintain records of external lab fabrications, prosthesis tracking, lab PDF work-orders, item photos, and patient handovers.
-            </p>
+
+          {/* Quick Action Button */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                resetCreateForm();
+                setActiveTab('create');
+              }}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Lab Report</span>
+            </button>
           </div>
         </div>
 
-        {/* View Switcher Tabs */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 border border-slate-200 self-start md:self-auto">
+        {/* Tab Navigation */}
+        <div className="flex border-b border-slate-200 bg-slate-50 px-4">
           <button
             type="button"
             onClick={() => setActiveTab('dashboard')}
-            className={`px-3.5 py-2 text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer flex items-center gap-2 ${
               activeTab === 'dashboard'
-                ? 'bg-white text-indigo-700 shadow-2xs border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'border-indigo-600 text-indigo-700 bg-white'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Clock className="w-3.5 h-3.5" />
-            <span>Dashboard</span>
+            <span>Overview & Dashboard</span>
           </button>
 
           <button
             type="button"
-            onClick={() => {
-              setActiveTab('cases');
-              fetchCases();
-            }}
-            className={`px-3.5 py-2 text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeTab === 'cases'
-                ? 'bg-white text-indigo-700 shadow-2xs border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
+            onClick={() => setActiveTab('reports')}
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer flex items-center gap-2 ${
+              activeTab === 'reports'
+                ? 'border-indigo-600 text-indigo-700 bg-white'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
-            <span>Lab Cases Directory</span>
-            <span className="bg-slate-200 text-slate-700 text-[10px] px-1.5 py-0.2 font-black">
-              {cases.length}
+            <span>All Patient Lab Reports</span>
+            <span className="ml-1 px-1.5 py-0.2 bg-slate-200 text-slate-700 text-[10px] font-bold">
+              {dashboardCounts.totalReports || reports.length}
             </span>
           </button>
 
           <button
             type="button"
-            onClick={() => openCreateCaseView()}
-            className={`px-3.5 py-2 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+            onClick={() => {
+              resetCreateForm();
+              setActiveTab('create');
+            }}
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer flex items-center gap-2 ${
               activeTab === 'create'
-                ? 'bg-indigo-600 text-white shadow-2xs'
-                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200'
+                ? 'border-indigo-600 text-indigo-700 bg-white'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>+ New Lab Case</span>
+            <span>Add Lab Report (Emailed PDF)</span>
           </button>
         </div>
       </div>
 
-      {/* Global Alerts */}
+      {/* Global Success / Error Feedback */}
       {actionSuccess && (
-        <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between">
+        <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-between">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{actionSuccess}</span>
@@ -792,7 +578,7 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
       )}
 
       {actionError && (
-        <div className="p-3.5 bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex items-center justify-between">
+        <div className="p-3 bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{actionError}</span>
@@ -807,219 +593,226 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
-      {/* 1. VIEW MODE: DENTAL LAB DASHBOARD                            */}
-      {/* ------------------------------------------------------------- */}
+      {/* ============================================================== */}
+      {/* TAB 1: OVERVIEW & DASHBOARD                                    */}
+      {/* ============================================================== */}
       {activeTab === 'dashboard' && (
         <div className="space-y-6">
-          {/* 5 Real KPI Metric Cards - Rectangular Layout */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
-            <div className="bg-white p-4 border border-slate-200 shadow-2xs">
+          {/* Live KPI Metric Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="p-4 bg-white border border-slate-200">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  Total Lab Cases
+                  Total Lab Reports
                 </span>
-                <FlaskConical className="w-4 h-4 text-slate-400" />
+                <FlaskConical className="w-4 h-4 text-indigo-600" />
               </div>
-              <p className="text-2xl font-black text-slate-900 mt-2 font-mono">
-                {dashboardCounts.totalCases}
-              </p>
-              <p className="text-[10px] text-slate-400 mt-1">All dental lab records</p>
+              <div className="mt-2 text-2xl font-black text-slate-900">
+                {dashboardCounts.totalReports || 0}
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5">All diagnostic reports archived</p>
             </div>
 
-            <div className="bg-white p-4 border border-blue-200 shadow-2xs border-l-4 border-l-blue-600">
+            <div className="p-4 bg-white border border-slate-200">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">
-                  Sent to Lab
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Reports This Month
                 </span>
-                <Truck className="w-4 h-4 text-blue-600" />
+                <Calendar className="w-4 h-4 text-blue-600" />
               </div>
-              <p className="text-2xl font-black text-blue-900 mt-2 font-mono">
-                {dashboardCounts.sentToLab}
-              </p>
-              <p className="text-[10px] text-blue-600 font-semibold mt-1">In fabrication at external lab</p>
+              <div className="mt-2 text-2xl font-black text-blue-700">
+                {dashboardCounts.reportsThisMonth || 0}
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5">Received in current month</p>
             </div>
 
-            <div className="bg-white p-4 border border-amber-200 shadow-2xs border-l-4 border-l-amber-500">
+            <div className="p-4 bg-white border border-slate-200">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">
-                  Received from Lab
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Reports Today
                 </span>
-                <Package className="w-4 h-4 text-amber-600" />
+                <Clock className="w-4 h-4 text-emerald-600" />
               </div>
-              <p className="text-2xl font-black text-amber-900 mt-2 font-mono">
-                {dashboardCounts.receivedFromLab}
-              </p>
-              <p className="text-[10px] text-amber-700 font-semibold mt-1">Received & verified in clinic</p>
+              <div className="mt-2 text-2xl font-black text-emerald-700">
+                {dashboardCounts.reportsToday || 0}
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5">Emailed results logged today</p>
             </div>
 
-            <div className="bg-white p-4 border border-purple-200 shadow-2xs border-l-4 border-l-purple-600">
+            <div className="p-4 bg-white border border-slate-200">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-purple-800 uppercase tracking-wider">
-                  Awaiting Handover
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  With Attached PDFs
                 </span>
-                <Clock className="w-4 h-4 text-purple-600" />
+                <FileText className="w-4 h-4 text-rose-600" />
               </div>
-              <p className="text-2xl font-black text-purple-900 mt-2 font-mono">
-                {dashboardCounts.readyForHandover}
-              </p>
-              <p className="text-[10px] text-purple-700 font-semibold mt-1">Ready for patient appointment</p>
-            </div>
-
-            <div className="bg-white p-4 border border-emerald-200 shadow-2xs border-l-4 border-l-emerald-600">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
-                  Handed Over
-                </span>
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <div className="mt-2 text-2xl font-black text-rose-700">
+                {dashboardCounts.reportsWithPdf || 0}
               </div>
-              <p className="text-2xl font-black text-emerald-900 mt-2 font-mono">
-                {dashboardCounts.handedOver}
-              </p>
-              <p className="text-[10px] text-emerald-700 font-semibold mt-1">Delivered to patient</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">Verified PDF files stored</p>
             </div>
           </div>
 
-          {/* Quick Action Banner */}
-          <div className="bg-indigo-900 text-white p-5 border border-indigo-950 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-base font-black tracking-tight">
-                Send New Work Order to External Dental Laboratory
-              </h2>
-              <p className="text-xs text-indigo-200 mt-0.5">
-                Record crowns, bridges, dentures, aligners, splints, or custom prosthetics with tooth numbers, material, shade, and lab instructions.
-              </p>
+          {/* Action Callout: Receive & Log Email Report */}
+          <div className="p-4 bg-linear-to-r from-indigo-50 to-blue-50 border border-indigo-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-indigo-600 text-white shrink-0 mt-0.5">
+                <Upload className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-indigo-950">
+                  Received a Patient Lab Report via Email?
+                </h3>
+                <p className="text-xs text-indigo-800 mt-0.5">
+                  Select the patient, pick the investigation type (CBCT, OPG, Blood, Biopsy), attach the emailed PDF report, and add doctor findings in one quick step.
+                </p>
+              </div>
             </div>
+
             <button
               type="button"
-              onClick={() => openCreateCaseView()}
-              className="px-4 py-2 bg-white text-indigo-900 hover:bg-indigo-50 font-black text-xs transition shrink-0 cursor-pointer flex items-center gap-2"
+              onClick={() => {
+                resetCreateForm();
+                setActiveTab('create');
+              }}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
             >
               <Plus className="w-4 h-4" />
-              <span>Create New Lab Case</span>
+              <span>Log Emailed Report</span>
             </button>
           </div>
 
-          {/* Cases Awaiting Handover Banner */}
-          {dashboardCounts.readyForHandover > 0 && (
-            <div className="p-4 bg-purple-50 border border-purple-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <Clock className="w-5 h-5 text-purple-700 shrink-0" />
-                <div>
-                  <p className="text-xs font-bold text-purple-900">
-                    {dashboardCounts.readyForHandover} Dental Item(s) Ready for Patient Handover
-                  </p>
-                  <p className="text-[11px] text-purple-700">
-                    Items received from the laboratory are waiting for the patient's visit and cementation/delivery.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setStatusFilter('READY_FOR_HANDOVER');
-                  setActiveTab('cases');
-                  fetchCases();
-                }}
-                className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition shrink-0 cursor-pointer"
-              >
-                View Items Ready for Handover
-              </button>
-            </div>
-          )}
-
-          {/* Recent Lab Cases Table */}
+          {/* Quick Investigation Presets & Recent Reports */}
           <div className="bg-white border border-slate-200">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+            <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  Recent Dental Lab Cases
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+                  Recent Lab & Diagnostic Reports
                 </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Latest lab work orders created and updated in the system.
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Latest diagnostic results archived in the clinic
                 </p>
               </div>
+
               <button
                 type="button"
-                onClick={() => {
-                  setActiveTab('cases');
-                  fetchCases();
-                }}
-                className="text-xs text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                onClick={() => setActiveTab('reports')}
+                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
               >
-                <span>View All Cases</span>
+                <span>View All Reports</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
 
-            {recentCases.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 text-xs">
-                No lab cases recorded yet. Click "Create New Lab Case" to add your first work order.
+            {recentReports.length === 0 ? (
+              <div className="p-8 text-center text-slate-400">
+                <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                <p className="text-xs font-bold">No lab reports recorded yet.</p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Click "Add Lab Report" to log the first emailed test result.
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold text-[11px] uppercase tracking-wider">
-                      <th className="py-2.5 px-3.5">Case #</th>
-                      <th className="py-2.5 px-3.5">Patient Name & ID</th>
-                      <th className="py-2.5 px-3.5">Laboratory</th>
-                      <th className="py-2.5 px-3.5">Items Ordered</th>
-                      <th className="py-2.5 px-3.5">Sent Date</th>
-                      <th className="py-2.5 px-3.5">Status</th>
-                      <th className="py-2.5 px-3.5 text-right">Action</th>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-2.5 px-3">Report # & Date</th>
+                      <th className="py-2.5 px-3">Patient</th>
+                      <th className="py-2.5 px-3">Investigation / Test</th>
+                      <th className="py-2.5 px-3">Diagnostic Lab</th>
+                      <th className="py-2.5 px-3">Doctor Findings</th>
+                      <th className="py-2.5 px-3">PDF Report</th>
+                      <th className="py-2.5 px-3 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {recentCases.map((c) => (
-                      <tr key={c.id} className="hover:bg-slate-50/80 transition">
-                        <td className="py-3 px-3.5 font-mono font-bold text-slate-900">
-                          {c.caseNumber}
-                        </td>
-                        <td className="py-3 px-3.5">
-                          <div className="font-bold text-slate-900">{c.patient.name}</div>
-                          <div className="text-[10px] text-slate-500 font-mono">
-                            {c.patient.patientCode}
-                          </div>
-                        </td>
-                        <td className="py-3 px-3.5">
-                          <div className="font-semibold text-slate-800">{c.labName}</div>
-                          {c.labRefNumber && (
+                    {recentReports.map((c) => {
+                      const primaryDoc = c.documents && c.documents.length > 0 ? c.documents[0] : null;
+                      const testName = getPrimaryTestName(c);
+
+                      return (
+                        <tr key={c.id} className="hover:bg-slate-50 transition">
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <div className="font-mono font-bold text-indigo-700">{c.caseNumber}</div>
                             <div className="text-[10px] text-slate-400">
-                              Ref: {c.labRefNumber}
+                              {c.sentDate ? c.sentDate.substring(0, 10) : ''}
                             </div>
-                          )}
-                        </td>
-                        <td className="py-3 px-3.5">
-                          <div className="space-y-0.5">
-                            {c.items.map((it, idx) => (
-                              <span
-                                key={idx}
-                                className="inline-block bg-slate-100 text-slate-700 text-[10px] px-2 py-0.5 mr-1 font-semibold border border-slate-200"
-                              >
-                                {it.itemType} {it.toothNumber ? `(T:${it.toothNumber})` : ''}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="py-3 px-3.5 text-slate-600">
-                          {c.sentDate ? c.sentDate.substring(0, 10) : '—'}
-                        </td>
-                        <td className="py-3 px-3.5">{renderStatusBadge(c.status)}</td>
-                        <td className="py-3 px-3.5 text-right">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedCase(c);
-                              setIsDetailModalOpen(true);
-                            }}
-                            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition cursor-pointer"
-                          >
-                            Manage Case
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+
+                          <td className="py-3 px-3">
+                            <div className="font-bold text-slate-900">{c.patient?.name}</div>
+                            <div className="text-[10px] font-mono text-slate-500">
+                              {c.patient?.patientCode}
+                              {c.patient?.mobile ? ` • ${c.patient.mobile}` : ''}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-3">
+                            <span className="inline-block px-2 py-0.5 bg-indigo-50 text-indigo-800 text-[11px] font-bold border border-indigo-200">
+                              {testName}
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-3 text-slate-600">
+                            <div>{c.labName}</div>
+                            {c.labRefNumber && (
+                              <div className="text-[10px] text-slate-400 font-mono">
+                                Ref: {c.labRefNumber}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3 max-w-xs">
+                            <p className="text-slate-700 text-xs line-clamp-1 italic">
+                              {c.generalNotes || '—'}
+                            </p>
+                          </td>
+
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            {primaryDoc ? (
+                              <div className="flex items-center gap-1.5">
+                                <a
+                                  href={`/api/lab/documents/${primaryDoc.id}/view`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 transition cursor-pointer"
+                                  title={`View ${primaryDoc.originalName}`}
+                                >
+                                  <FileText className="w-3.5 h-3.5 text-rose-600" />
+                                  <span>View PDF</span>
+                                  <Eye className="w-3 h-3 text-rose-500" />
+                                </a>
+
+                                <a
+                                  href={`/api/lab/documents/${primaryDoc.id}/download`}
+                                  download
+                                  className="p-1 text-slate-400 hover:text-slate-700 transition"
+                                  title="Download PDF"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </a>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">No PDF attached</span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3 text-right whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedReport(c);
+                                setIsDetailModalOpen(true);
+                              }}
+                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition cursor-pointer"
+                            >
+                              Manage
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1028,327 +821,248 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
-      {/* 2. VIEW MODE: LAB CASES DIRECTORY                             */}
-      {/* ------------------------------------------------------------- */}
-      {activeTab === 'cases' && (
+      {/* ============================================================== */}
+      {/* TAB 2: ALL PATIENT LAB REPORTS ARCHIVE                         */}
+      {/* ============================================================== */}
+      {activeTab === 'reports' && (
         <div className="space-y-4">
-          {/* Search & Filter Bar - Rectangular Design */}
-          <div className="bg-white p-4 border border-slate-200 shadow-2xs space-y-3">
-            <div className="flex flex-col md:flex-row md:items-center gap-3">
-              {/* Search input */}
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+          {/* Search & Filters Bar */}
+          <div className="bg-white border border-slate-200 p-4 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              {/* Search Bar */}
+              <div className="md:col-span-2 relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="Search by case number, patient name, patient code, lab name, or tooth number..."
+                  placeholder="Search by Patient Name, ID, Mobile, Test Type, Doctor Notes..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full text-xs pl-9 pr-3 py-2.5 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden"
+                  className="w-full text-xs pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 focus:bg-white focus:border-indigo-500 focus:outline-hidden"
                 />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
               </div>
 
-              {/* Status Filter */}
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="text-xs px-3 py-2.5 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden font-semibold text-slate-700 shrink-0"
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="SENT_TO_LAB">Sent to Lab</option>
-                <option value="RECEIVED_FROM_LAB">Received from Lab</option>
-                <option value="READY_FOR_HANDOVER">Ready for Handover</option>
-                <option value="HANDED_OVER">Handed Over</option>
-                <option value="CANCELLED">Cancelled</option>
-              </select>
-
-              {/* Dental Item Type Filter */}
-              <select
-                value={itemTypeFilter}
-                onChange={(e) => setItemTypeFilter(e.target.value)}
-                className="text-xs px-3 py-2.5 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden font-semibold text-slate-700 shrink-0"
-              >
-                <option value="ALL">All Dental Items</option>
-                <option value="CROWN">Crown</option>
-                <option value="BRIDGE">Bridge</option>
-                <option value="DENTURE">Denture</option>
-                <option value="VENEER">Veneer</option>
-                <option value="RETAINER">Retainer</option>
-                <option value="SPLINT">Splint</option>
-                <option value="OTHER">Other</option>
-              </select>
-
-              {/* Laboratory Filter */}
-              {distinctLabs.length > 0 && (
+              {/* Category Filter */}
+              <div>
                 <select
-                  value={labFilter}
-                  onChange={(e) => setLabFilter(e.target.value)}
-                  className="text-xs px-3 py-2.5 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden font-semibold text-slate-700 shrink-0"
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-300 focus:bg-white focus:border-indigo-500 focus:outline-hidden"
                 >
-                  <option value="ALL">All Laboratories</option>
-                  {distinctLabs.map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
+                  <option value="ALL">All Investigation Types</option>
+                  <option value="CBCT">CBCT 3D Scans</option>
+                  <option value="OPG">OPG / Panoramic X-Rays</option>
+                  <option value="Blood">Blood Investigations</option>
+                  <option value="Biopsy">Biopsy / Histopathology</option>
+                  <option value="Culture">Culture & Sensitivity</option>
                 </select>
-              )}
-
-              {/* Action Buttons */}
-              <button
-                type="button"
-                onClick={fetchCases}
-                className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition shrink-0 cursor-pointer flex items-center gap-1.5"
-                title="Refresh Cases"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Filter</span>
-              </button>
-            </div>
-
-            {/* Date Filters Row */}
-            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-100 text-xs">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-                Sent Date Range:
-              </span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={startDateFilter}
-                  onChange={(e) => setStartDateFilter(e.target.value)}
-                  className="text-xs px-2.5 py-1.5 bg-white border border-slate-300"
-                />
-                <span className="text-slate-400">to</span>
-                <input
-                  type="date"
-                  value={endDateFilter}
-                  onChange={(e) => setEndDateFilter(e.target.value)}
-                  className="text-xs px-2.5 py-1.5 bg-white border border-slate-300"
-                />
               </div>
 
-              {(startDateFilter || endDateFilter || statusFilter !== 'ALL' || itemTypeFilter !== 'ALL' || labFilter !== 'ALL' || searchQuery) && (
+              {/* Reset & Refresh */}
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     setSearchQuery('');
-                    setStatusFilter('ALL');
-                    setItemTypeFilter('ALL');
-                    setLabFilter('ALL');
+                    setCategoryFilter('ALL');
                     setStartDateFilter('');
                     setEndDateFilter('');
+                    fetchReports();
                   }}
-                  className="text-indigo-600 hover:text-indigo-800 text-xs font-bold ml-auto cursor-pointer"
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition cursor-pointer flex items-center justify-center gap-1.5 flex-1"
                 >
-                  Clear all filters
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Reset</span>
                 </button>
-              )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetCreateForm();
+                    setActiveTab('create');
+                  }}
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer flex-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Add Report</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Date range filter row */}
+            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+              <span className="font-bold flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                Date Range:
+              </span>
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-slate-400">From:</span>
+                <input
+                  type="date"
+                  value={startDateFilter}
+                  onChange={(e) => setStartDateFilter(e.target.value)}
+                  className="text-xs px-2 py-1 bg-white border border-slate-300 focus:outline-hidden"
+                />
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-slate-400">To:</span>
+                <input
+                  type="date"
+                  value={endDateFilter}
+                  onChange={(e) => setEndDateFilter(e.target.value)}
+                  className="text-xs px-2 py-1 bg-white border border-slate-300 focus:outline-hidden"
+                />
+              </div>
             </div>
           </div>
 
-          {/* Cases Table - Clean Rectangular Layout */}
+          {/* Reports Table */}
           <div className="bg-white border border-slate-200">
+            <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-700">
+                Patient Reports ({filteredReports.length})
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Click "View PDF" to open full report directly in browser
+              </span>
+            </div>
+
             {loading ? (
-              <div className="p-10 text-center text-xs text-slate-500">
-                <RefreshCw className="w-5 h-5 mx-auto animate-spin text-indigo-600 mb-2" />
-                <span>Loading dental lab cases...</span>
+              <div className="p-12 text-center text-slate-400">
+                <RefreshCw className="w-6 h-6 mx-auto animate-spin mb-2 text-indigo-500" />
+                <p className="text-xs font-bold">Loading patient lab reports...</p>
               </div>
-            ) : cases.length === 0 ? (
-              <div className="p-10 text-center space-y-3">
-                <FlaskConical className="w-10 h-10 mx-auto text-slate-300" />
-                <p className="text-xs font-bold text-slate-700">No lab cases found.</p>
-                <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
-                  Try adjusting your search criteria or register a new external lab work order.
+            ) : filteredReports.length === 0 ? (
+              <div className="p-12 text-center text-slate-400">
+                <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                <p className="text-xs font-bold">No lab reports found matching criteria.</p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Try clearing your search filters or click "Add Lab Report" to record one.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => openCreateCaseView()}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition cursor-pointer"
-                >
-                  + Create New Lab Case
-                </button>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-[11px] uppercase tracking-wider">
-                      <th className="py-3 px-3.5">Case #</th>
-                      <th className="py-3 px-3.5">Patient Details</th>
-                      <th className="py-3 px-3.5">Laboratory</th>
-                      <th className="py-3 px-3.5">Dental Item(s)</th>
-                      <th className="py-3 px-3.5">Sent Date</th>
-                      <th className="py-3 px-3.5">Received Date</th>
-                      <th className="py-3 px-3.5">Handover Date</th>
-                      <th className="py-3 px-3.5">Status</th>
-                      <th className="py-3 px-3.5">Attachments</th>
-                      <th className="py-3 px-3.5 text-right">Actions</th>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-2.5 px-3">Report # & Date</th>
+                      <th className="py-2.5 px-3">Patient Name & ID</th>
+                      <th className="py-2.5 px-3">Investigation / Test</th>
+                      <th className="py-2.5 px-3">Diagnostic Center</th>
+                      <th className="py-2.5 px-3">Clinical Findings / Summary</th>
+                      <th className="py-2.5 px-3">PDF Report(s)</th>
+                      <th className="py-2.5 px-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {cases.map((c) => (
-                      <tr key={c.id} className="hover:bg-slate-50/80 transition">
-                        {/* Case Number */}
-                        <td className="py-3.5 px-3.5 font-mono font-bold text-indigo-900">
-                          {c.caseNumber}
-                        </td>
+                    {filteredReports.map((c) => {
+                      const testName = getPrimaryTestName(c);
+                      const hasDocs = c.documents && c.documents.length > 0;
 
-                        {/* Patient Name & Code */}
-                        <td className="py-3.5 px-3.5">
-                          <div className="font-bold text-slate-900">{c.patient.name}</div>
-                          <div className="text-[10px] text-slate-500 font-mono">
-                            {c.patient.patientCode} • {c.patient.mobile}
-                          </div>
-                        </td>
-
-                        {/* Laboratory Name */}
-                        <td className="py-3.5 px-3.5">
-                          <div className="font-semibold text-slate-800">{c.labName}</div>
-                          {c.labRefNumber && (
-                            <div className="text-[10px] text-slate-400 font-mono">
-                              Ref: {c.labRefNumber}
+                      return (
+                        <tr key={c.id} className="hover:bg-slate-50 transition">
+                          <td className="py-3.5 px-3 whitespace-nowrap">
+                            <div className="font-mono font-bold text-indigo-700">{c.caseNumber}</div>
+                            <div className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
+                              <Calendar className="w-3 h-3 text-slate-400" />
+                              <span>{c.sentDate ? c.sentDate.substring(0, 10) : ''}</span>
                             </div>
-                          )}
-                        </td>
+                          </td>
 
-                        {/* Items */}
-                        <td className="py-3.5 px-3.5">
-                          <div className="space-y-1">
-                            {c.items && c.items.length > 0 ? (
-                              c.items.map((it, idx) => (
-                                <div key={idx} className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-bold text-slate-800">
-                                    {it.itemType === 'OTHER' && it.customItemName
-                                      ? it.customItemName
-                                      : it.itemType}
-                                  </span>
-                                  <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 border border-slate-200">
-                                    T: {it.toothNumber}
-                                  </span>
-                                  {it.shade && (
-                                    <span className="text-[10px] bg-amber-50 text-amber-800 px-1 py-0.2 border border-amber-200">
-                                      {it.shade}
-                                    </span>
-                                  )}
-                                </div>
-                              ))
-                            ) : (
-                              <span className="text-slate-400 italic">No items listed</span>
+                          <td className="py-3.5 px-3">
+                            <div className="font-bold text-slate-900">{c.patient?.name}</div>
+                            <div className="text-[10px] font-mono text-slate-500">
+                              {c.patient?.patientCode}
+                              {c.patient?.age ? ` • ${c.patient.age}y` : ''}
+                              {c.patient?.gender ? `/${c.patient.gender[0]}` : ''}
+                              {c.patient?.mobile ? ` • ${c.patient.mobile}` : ''}
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-3">
+                            <span className="inline-block px-2.5 py-1 bg-indigo-50 text-indigo-800 text-xs font-bold border border-indigo-200">
+                              {testName}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-3 text-slate-600">
+                            <div className="font-semibold text-slate-800">{c.labName}</div>
+                            {c.labRefNumber && (
+                              <div className="text-[10px] text-slate-400 font-mono">
+                                Ref: {c.labRefNumber}
+                              </div>
                             )}
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* Sent Date */}
-                        <td className="py-3.5 px-3.5 text-slate-600 whitespace-nowrap">
-                          {c.sentDate ? c.sentDate.substring(0, 10) : '—'}
-                        </td>
+                          <td className="py-3.5 px-3 max-w-xs">
+                            {c.generalNotes ? (
+                              <p className="text-slate-700 text-xs line-clamp-2 italic" title={c.generalNotes}>
+                                {c.generalNotes}
+                              </p>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] italic">No findings recorded</span>
+                            )}
+                          </td>
 
-                        {/* Received Date */}
-                        <td className="py-3.5 px-3.5 whitespace-nowrap">
-                          {c.receivedDate ? (
-                            <span className="font-semibold text-amber-900">
-                              {c.receivedDate.substring(0, 10)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 italic">Pending</span>
-                          )}
-                        </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap">
+                            {hasDocs ? (
+                              <div className="space-y-1">
+                                {c.documents.map((doc) => (
+                                  <div key={doc.id} className="flex items-center gap-1.5">
+                                    <a
+                                      href={`/api/lab/documents/${doc.id}/view`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 transition cursor-pointer max-w-[200px] truncate"
+                                      title={`View ${doc.originalName}`}
+                                    >
+                                      <FileText className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                      <span className="truncate">{doc.originalName}</span>
+                                      <Eye className="w-3 h-3 text-rose-500 shrink-0" />
+                                    </a>
 
-                        {/* Handover Date */}
-                        <td className="py-3.5 px-3.5 whitespace-nowrap">
-                          {c.handoverDate ? (
-                            <span className="font-bold text-emerald-800">
-                              {c.handoverDate.substring(0, 10)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 italic">Not handed over</span>
-                          )}
-                        </td>
+                                    <a
+                                      href={`/api/lab/documents/${doc.id}/download`}
+                                      download
+                                      className="p-1 text-slate-400 hover:text-slate-700 transition"
+                                      title="Download PDF"
+                                    >
+                                      <Download className="w-3.5 h-3.5" />
+                                    </a>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 italic">No PDF attached</span>
+                            )}
+                          </td>
 
-                        {/* Status */}
-                        <td className="py-3.5 px-3.5 whitespace-nowrap">
-                          {renderStatusBadge(c.status)}
-                        </td>
-
-                        {/* Attachments Pills */}
-                        <td className="py-3.5 px-3.5 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className={`text-[10px] px-1.5 py-0.5 border flex items-center gap-1 ${
-                                (c.documents && c.documents.length > 0) || (c._count && c._count.documents > 0)
-                                  ? 'bg-rose-50 text-rose-800 border-rose-200 font-bold'
-                                  : 'bg-slate-50 text-slate-400 border-slate-200'
-                              }`}
-                              title="PDF Documents"
-                            >
-                              <FileText className="w-3 h-3" />
-                              <span>{c.documents ? c.documents.length : c._count?.documents || 0}</span>
-                            </span>
-
-                            <span
-                              className={`text-[10px] px-1.5 py-0.5 border flex items-center gap-1 ${
-                                (c.photos && c.photos.length > 0) || (c._count && c._count.photos > 0)
-                                  ? 'bg-blue-50 text-blue-800 border-blue-200 font-bold'
-                                  : 'bg-slate-50 text-slate-400 border-slate-200'
-                              }`}
-                              title="Item Photographs"
-                            >
-                              <ImageIcon className="w-3 h-3" />
-                              <span>{c.photos ? c.photos.length : c._count?.photos || 0}</span>
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Actions */}
-                        <td className="py-3.5 px-3.5 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {/* Manage / Details Button */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedCase(c);
-                                setIsDetailModalOpen(true);
-                              }}
-                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer"
-                              title="View & Manage Case"
-                            >
-                              Manage
-                            </button>
-
-                            {/* Quick Handover Button if not handed over */}
-                            {c.status !== 'HANDED_OVER' && c.status !== 'CANCELLED' && (
+                          <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => handleOpenHandoverModal(c)}
-                                className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200 transition cursor-pointer"
-                                title="Record Patient Handover"
+                                onClick={() => {
+                                  setSelectedReport(c);
+                                  setIsDetailModalOpen(true);
+                                }}
+                                className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer"
+                                title="View details, edit notes, or add files"
                               >
-                                Handover
+                                Manage
                               </button>
-                            )}
 
-                            {/* Delete Button */}
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteCase(c)}
-                              className="p-1 text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                              title="Delete Case"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteReport(c)}
+                                className="p-1 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                                title="Delete report"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1357,48 +1071,44 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
-      {/* 3. VIEW MODE: CREATE / EDIT LAB CASE                          */}
-      {/* ------------------------------------------------------------- */}
+      {/* ============================================================== */}
+      {/* TAB 3: ADD LAB REPORT (FAST SINGLE-STEP FORM)                  */}
+      {/* ============================================================== */}
       {activeTab === 'create' && (
-        <form onSubmit={handleSaveLabCase} className="space-y-5">
-          <div className="bg-white p-5 border border-slate-200 shadow-2xs space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <div>
-                <h2 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
-                  <FlaskConical className="w-5 h-5 text-indigo-600" />
-                  <span>
-                    {editingCaseId ? `Edit Lab Case` : `Create External Dental Lab Case`}
-                  </span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Record work order sent to external laboratory, item specifications, tooth numbers, and patient details.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  resetCreateForm();
-                  setActiveTab('cases');
-                }}
-                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition cursor-pointer"
-              >
-                Back to Cases List
-              </button>
+        <div className="bg-white border border-slate-200 p-6 max-w-4xl mx-auto shadow-xs">
+          <div className="pb-4 border-b border-slate-200 mb-6 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <FileText className="w-5 h-5 text-indigo-600" />
+                <span>Log Emailed Patient Lab Report</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Enter the patient's diagnostic results and upload the PDF file received from the laboratory's email.
+              </p>
             </div>
 
-            {formError && (
-              <div className="p-3.5 bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{formError}</span>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => setActiveTab('reports')}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
 
-            {/* SECTION 1: Patient Details */}
+          {formError && (
+            <div className="mb-5 p-3.5 bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{formError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleCreateReport} className="space-y-6">
+            {/* 1. SELECT PATIENT */}
             <div className="space-y-3">
               <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5 pb-1 border-b border-slate-100">
                 <User className="w-3.5 h-3.5 text-indigo-600" />
-                <span>1. Patient Details</span>
+                <span>1. Select Patient *</span>
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1414,362 +1124,245 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
                 {/* Optional Appointment Linking */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Link to Relevant Appointment / Visit (Optional)
+                    Link to Patient Appointment (Optional)
                   </label>
                   <select
                     value={selectedAppointmentId}
                     onChange={(e) => setSelectedAppointmentId(e.target.value)}
-                    disabled={!formPatient}
-                    className="w-full text-xs px-3 py-2.5 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden disabled:bg-slate-50 disabled:text-slate-400"
+                    disabled={!formPatient || patientAppointments.length === 0}
+                    className="w-full text-xs px-3 py-2 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden disabled:bg-slate-50 disabled:text-slate-400"
                   >
-                    <option value="">-- No specific appointment linked --</option>
+                    <option value="">
+                      {!formPatient
+                        ? 'Select patient first...'
+                        : patientAppointments.length === 0
+                        ? 'No appointments found (Optional)'
+                        : 'Select Appointment (Optional)'}
+                    </option>
                     {patientAppointments.map((apt) => (
                       <option key={apt.id} value={apt.id}>
-                        {apt.appointmentCode} • {apt.appointmentDate.substring(0, 10)} • {apt.procedureName || apt.visitType}
+                        {apt.appointmentCode} — {apt.appointmentDate?.substring(0, 10)} ({apt.procedureName || 'Consultation'})
                       </option>
                     ))}
                   </select>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Optional: Links this lab case to the clinical visit where the impression or prescription was taken.
-                  </p>
                 </div>
               </div>
             </div>
 
-            {/* SECTION 2: External Laboratory Details */}
+            {/* 2. INVESTIGATION / TEST TYPE */}
             <div className="space-y-3 pt-3 border-t border-slate-100">
               <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5 pb-1 border-b border-slate-100">
-                <Truck className="w-3.5 h-3.5 text-indigo-600" />
-                <span>2. External Laboratory Details</span>
+                <FlaskConical className="w-3.5 h-3.5 text-indigo-600" />
+                <span>2. Investigation & Test Details *</span>
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              {/* Quick Presets */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Choose Common Test Preset or Type Custom:
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {COMMON_TEST_PRESETS.map((preset) => {
+                    const isSelected = testType === preset.value;
+                    return (
+                      <button
+                        key={preset.value}
+                        type="button"
+                        onClick={() => {
+                          setTestType(preset.value);
+                          setCustomTestType(preset.value);
+                        }}
+                        className={`px-3 py-1.5 text-xs font-bold border transition cursor-pointer flex items-center gap-1 ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3 h-3" />}
+                        <span>{preset.label}</span>
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTestType('CUSTOM');
+                      setCustomTestType('');
+                    }}
+                    className={`px-3 py-1.5 text-xs font-bold border transition cursor-pointer ${
+                      testType === 'CUSTOM'
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    + Other / Custom Test
+                  </button>
+                </div>
+              </div>
+
+              {/* Free-text test type input */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Investigation / Test Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. CBCT 3D Scan Mandible, Complete Blood Count, Biopsy of buccal mucosa..."
+                  value={customTestType}
+                  onChange={(e) => {
+                    setCustomTestType(e.target.value);
+                    if (testType !== 'CUSTOM') setTestType(e.target.value);
+                  }}
+                  className="w-full text-xs px-3 py-2 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden"
+                />
+              </div>
+
+              {/* Report Date, Lab Name, Lab Ref Number */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Laboratory Name <span className="text-rose-500">*</span>
+                    Report Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={reportDate}
+                    onChange={(e) => setReportDate(e.target.value)}
+                    className="w-full text-xs px-3 py-2 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Diagnostic Lab / Center Name (Optional)
                   </label>
                   <input
                     type="text"
-                    required
-                    placeholder="e.g. Apex Dental Ceramic Lab"
+                    placeholder="e.g. Focus Diagnostics, SRL, Max..."
                     value={labName}
                     onChange={(e) => setLabName(e.target.value)}
-                    className="w-full text-xs px-3 py-2 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden font-medium"
+                    className="w-full text-xs px-3 py-2 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Contact Person (Optional)
+                    Lab Ref # / Email Order ID (Optional)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Mr. Sharma / Technician"
-                    value={labContact}
-                    onChange={(e) => setLabContact(e.target.value)}
-                    className="w-full text-xs px-3 py-2 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Phone / Mobile (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. +91 98765 43210"
-                    value={labPhone}
-                    onChange={(e) => setLabPhone(e.target.value)}
-                    className="w-full text-xs px-3 py-2 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Lab Ref / Work Order # (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. WO-2026-98"
+                    placeholder="e.g. LAB-ORD-8392"
                     value={labRefNumber}
                     onChange={(e) => setLabRefNumber(e.target.value)}
-                    className="w-full text-xs px-3 py-2 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden font-mono"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* SECTION 3: Timeline & Dates */}
-            <div className="space-y-3 pt-3 border-t border-slate-100">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5 pb-1 border-b border-slate-100">
-                <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-                <span>3. Timeline & Dates</span>
-              </h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Date Sent to Lab <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={sentDate}
-                    onChange={(e) => setSentDate(e.target.value)}
-                    className="w-full text-xs px-3 py-2 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Return Date (Optional)
-                  </label>
-                  <input
-                    type="date"
-                    value={expectedDate}
-                    onChange={(e) => setExpectedDate(e.target.value)}
                     className="w-full text-xs px-3 py-2 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden"
                   />
                 </div>
               </div>
             </div>
 
-            {/* SECTION 4: Dental Work Items (Multiple items per case supported) */}
+            {/* 3. ATTACH EMAILED PDF REPORT */}
             <div className="space-y-3 pt-3 border-t border-slate-100">
               <div className="flex items-center justify-between pb-1 border-b border-slate-100">
                 <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                  <Package className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>4. Dental Items to Fabricate</span>
-                  <span className="bg-indigo-100 text-indigo-800 text-[10px] px-1.5 py-0.2 font-bold">
-                    {formItems.length}
-                  </span>
+                  <FileText className="w-3.5 h-3.5 text-rose-600" />
+                  <span>3. Attach Emailed PDF Report(s)</span>
                 </h3>
-
-                <button
-                  type="button"
-                  onClick={handleAddItemRow}
-                  className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition cursor-pointer flex items-center gap-1"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>Add Another Dental Item</span>
-                </button>
+                <span className="text-[10px] text-slate-500">PDF files up to 20MB</span>
               </div>
 
-              <div className="space-y-3">
-                {formItems.map((item, index) => (
-                  <div
-                    key={index}
-                    className="p-4 bg-slate-50 border border-slate-200 space-y-3"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-800 flex items-center gap-2">
-                        <span className="w-5 h-5 bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">
-                          {index + 1}
-                        </span>
-                        <span>Dental Item Specification</span>
-                      </span>
+              <div className="p-4 bg-slate-50 border border-dashed border-slate-300 text-center">
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  multiple
+                  onChange={(e) => {
+                    if (e.target.files) {
+                      const files = Array.from(e.target.files);
+                      const validPdfs = files.filter(
+                        (f) => f.name.toLowerCase().endsWith('.pdf') || f.type === 'application/pdf'
+                      );
+                      if (validPdfs.length !== files.length) {
+                        alert('Only PDF files are accepted for lab reports.');
+                      }
+                      setPendingDocsToUpload((prev) => [...prev, ...validPdfs]);
+                    }
+                  }}
+                  className="hidden"
+                  id="pdf-upload-create"
+                />
+                <label
+                  htmlFor="pdf-upload-create"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 transition cursor-pointer shadow-xs"
+                >
+                  <Upload className="w-4 h-4 text-rose-600" />
+                  <span>Select Emailed PDF File(s)</span>
+                </label>
+                <p className="text-[11px] text-slate-400 mt-2">
+                  Attach the PDF report you downloaded from the laboratory's email
+                </p>
+              </div>
 
-                      {formItems.length > 1 && (
+              {/* List of files selected for upload */}
+              {pendingDocsToUpload.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-slate-600">
+                    Selected Files ({pendingDocsToUpload.length}):
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {pendingDocsToUpload.map((f, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2 bg-rose-50 border border-rose-200 flex items-center justify-between text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span className="truncate font-semibold text-rose-950" title={f.name}>
+                            {f.name}
+                          </span>
+                          <span className="text-[10px] text-rose-600 shrink-0 font-mono">
+                            ({formatBytes(f.size)})
+                          </span>
+                        </div>
                         <button
                           type="button"
-                          onClick={() => handleRemoveItemRow(index)}
-                          className="text-slate-400 hover:text-rose-600 p-1 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                          onClick={() =>
+                            setPendingDocsToUpload((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="text-rose-400 hover:text-rose-700 p-1 cursor-pointer"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>Remove Item</span>
+                          <X className="w-3.5 h-3.5" />
                         </button>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Item Type <span className="text-rose-500">*</span>
-                        </label>
-                        <select
-                          value={item.itemType}
-                          onChange={(e) => handleItemChange(index, 'itemType', e.target.value)}
-                          className="w-full text-xs px-2.5 py-2 bg-white border border-slate-300 font-semibold"
-                        >
-                          <option value="CROWN">Crown</option>
-                          <option value="BRIDGE">Bridge</option>
-                          <option value="DENTURE">Denture</option>
-                          <option value="VENEER">Veneer</option>
-                          <option value="RETAINER">Retainer</option>
-                          <option value="SPLINT">Splint</option>
-                          <option value="OTHER">Other Appliance</option>
-                        </select>
                       </div>
-
-                      {item.itemType === 'OTHER' && (
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                            Specify Item Name
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="e.g. Night Guard / Space Maintainer"
-                            value={item.customItemName}
-                            onChange={(e) => handleItemChange(index, 'customItemName', e.target.value)}
-                            className="w-full text-xs px-2.5 py-2 bg-white border border-slate-300"
-                          />
-                        </div>
-                      )}
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Tooth Number / Region <span className="text-rose-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="e.g. 16, 17 or Upper Arch"
-                          value={item.toothNumber}
-                          onChange={(e) => handleItemChange(index, 'toothNumber', e.target.value)}
-                          className="w-full text-xs px-2.5 py-2 bg-white border border-slate-300 font-semibold"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Material (Optional)
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Zirconia / PFM / E-Max / Acrylic"
-                          value={item.material}
-                          onChange={(e) => handleItemChange(index, 'material', e.target.value)}
-                          className="w-full text-xs px-2.5 py-2 bg-white border border-slate-300"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Shade (Optional)
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. A1, A2, A3, BL2"
-                          value={item.shade}
-                          onChange={(e) => handleItemChange(index, 'shade', e.target.value)}
-                          className="w-full text-xs px-2.5 py-2 bg-white border border-slate-300 font-semibold"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Work Description & Instructions for Technician (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Monolithic zirconia with stained fissure lines, tight interproximal contacts, clearance checked."
-                        value={item.description}
-                        onChange={(e) => handleItemChange(index, 'description', e.target.value)}
-                        className="w-full text-xs px-2.5 py-2 bg-white border border-slate-300"
-                      />
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
 
-            {/* SECTION 5: General Notes & Instructions */}
+            {/* 4. DOCTOR FINDINGS & CLINICAL NOTES */}
             <div className="space-y-3 pt-3 border-t border-slate-100">
               <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5 pb-1 border-b border-slate-100">
-                <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                <span>5. General Lab Notes & Instructions</span>
+                <Edit2 className="w-3.5 h-3.5 text-indigo-600" />
+                <span>4. Doctor's Clinical Findings & Summary (Optional)</span>
               </h3>
 
               <div>
                 <textarea
                   rows={3}
-                  placeholder="Additional notes for the laboratory, courier details, or special clinical remarks..."
-                  value={generalNotes}
-                  onChange={(e) => setGeneralNotes(e.target.value)}
+                  placeholder="Record doctor's interpretation or key findings from the report (e.g. Adequate bone height at 36 for 4.2mm implant; Normal platelet count 2.4 lakhs; No bony pathology detected)..."
+                  value={doctorFindings}
+                  onChange={(e) => setDoctorFindings(e.target.value)}
                   className="w-full text-xs p-3 bg-white border border-slate-300 focus:border-indigo-500 focus:outline-hidden"
                 />
               </div>
             </div>
 
-            {/* SECTION 6: Attach Documents & Photos during initial creation */}
-            {!editingCaseId && (
-              <div className="space-y-3 pt-3 border-t border-slate-100">
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5 pb-1 border-b border-slate-100">
-                  <Upload className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>6. Attach Documents (PDF) & Photos (Optional)</span>
-                </h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* PDF Upload */}
-                  <div className="p-3 bg-slate-50 border border-slate-200 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                        <FileText className="w-4 h-4 text-rose-600" />
-                        <span>Lab Work-Order / PDF Documents</span>
-                      </span>
-                      <span className="text-[10px] text-slate-500">PDF only (max 15MB)</span>
-                    </div>
-
-                    <input
-                      type="file"
-                      accept="application/pdf,.pdf"
-                      multiple
-                      onChange={(e) => {
-                        if (e.target.files) {
-                          setPendingDocsToUpload(Array.from(e.target.files));
-                        }
-                      }}
-                      className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:border-0 file:text-xs file:font-bold file:bg-slate-200 hover:file:bg-slate-300 file:text-slate-800 file:cursor-pointer"
-                    />
-
-                    {pendingDocsToUpload.length > 0 && (
-                      <p className="text-[11px] text-indigo-700 font-bold">
-                        {pendingDocsToUpload.length} PDF file(s) selected for upload upon save.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Photo Upload */}
-                  <div className="p-3 bg-slate-50 border border-slate-200 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                        <ImageIcon className="w-4 h-4 text-blue-600" />
-                        <span>Received Item Photographs</span>
-                      </span>
-                      <span className="text-[10px] text-slate-500">JPG, PNG (max 10MB)</span>
-                    </div>
-
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/jpg"
-                      multiple
-                      onChange={(e) => {
-                        if (e.target.files) {
-                          setPendingPhotosToUpload(Array.from(e.target.files));
-                        }
-                      }}
-                      className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:border-0 file:text-xs file:font-bold file:bg-slate-200 hover:file:bg-slate-300 file:text-slate-800 file:cursor-pointer"
-                    />
-
-                    {pendingPhotosToUpload.length > 0 && (
-                      <p className="text-[11px] text-indigo-700 font-bold">
-                        {pendingPhotosToUpload.length} image(s) selected for upload upon save.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Form Actions */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+            {/* SUBMIT BUTTON */}
+            <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  resetCreateForm();
-                  setActiveTab('cases');
-                }}
+                onClick={() => setActiveTab('reports')}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition cursor-pointer"
               >
                 Cancel
@@ -1778,329 +1371,178 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
               <button
                 type="submit"
                 disabled={formSubmitting}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-2xs"
+                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
               >
                 {formSubmitting ? (
                   <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Saving Lab Case...</span>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Archiving Lab Report...</span>
                   </>
                 ) : (
                   <>
-                    <Check className="w-3.5 h-3.5" />
-                    <span>{editingCaseId ? 'Update Lab Case' : 'Register & Save Lab Case'}</span>
+                    <Check className="w-4 h-4" />
+                    <span>Save & Store Lab Report</span>
                   </>
                 )}
               </button>
             </div>
-          </div>
-        </form>
+          </form>
+        </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
-      {/* 4. MODAL: DETAILED CASE MANAGEMENT VIEW                       */}
-      {/* ------------------------------------------------------------- */}
-      {isDetailModalOpen && selectedCase && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-300 shadow-xl w-full max-w-4xl max-h-[92vh] flex flex-col my-auto">
+      {/* ============================================================== */}
+      {/* 5. REPORT DETAIL & PDF VIEWER MODAL                             */}
+      {/* ============================================================== */}
+      {isDetailModalOpen && selectedReport && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-300 shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between sticky top-0 z-10">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-indigo-600 text-white flex items-center justify-center font-bold">
-                  <FlaskConical className="w-5 h-5" />
+                <div className="p-2 bg-indigo-600 text-white">
+                  <FileText className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-sm text-slate-900">
-                      {selectedCase.caseNumber}
+                    <span className="font-mono text-xs font-bold text-indigo-300">
+                      {selectedReport.caseNumber}
                     </span>
-                    {renderStatusBadge(selectedCase.status)}
+                    <span className="px-2 py-0.5 bg-indigo-500/30 text-indigo-200 text-[10px] font-bold uppercase tracking-wider">
+                      {getPrimaryTestName(selectedReport)}
+                    </span>
                   </div>
-                  <p className="text-[11px] text-slate-500">
-                    Patient: <strong className="text-slate-800">{selectedCase.patient.name}</strong> ({selectedCase.patient.patientCode}) • Lab: <strong className="text-slate-800">{selectedCase.labName}</strong>
+                  <h3 className="text-base font-bold text-white">
+                    {selectedReport.patient?.name} ({selectedReport.patient?.patientCode})
+                  </h3>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDetailModalOpen(false);
+                  setSelectedReport(null);
+                  setIsEditingNotes(false);
+                }}
+                className="p-1 text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-5">
+              {/* Patient & Test Overview Bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 border border-slate-200 text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">Report Date</span>
+                  <p className="font-bold text-slate-800 mt-0.5">
+                    {selectedReport.sentDate ? selectedReport.sentDate.substring(0, 10) : '—'}
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">Diagnostic Lab</span>
+                  <p className="font-bold text-slate-800 mt-0.5">{selectedReport.labName || '—'}</p>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">Lab Ref #</span>
+                  <p className="font-bold font-mono text-slate-800 mt-0.5">
+                    {selectedReport.labRefNumber || '—'}
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">Patient Contact</span>
+                  <p className="font-bold text-slate-800 mt-0.5">
+                    {selectedReport.patient?.mobile || '—'}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => openEditCaseView(selectedCase)}
-                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 transition cursor-pointer"
-                >
-                  Edit Details
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsDetailModalOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-700 transition cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Scrollable Body */}
-            <div className="p-5 space-y-5 overflow-y-auto flex-1">
-              {/* Status Action Buttons Ribbon */}
-              <div className="p-3 bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-3">
-                <div className="text-xs">
-                  <span className="text-slate-500 font-semibold">Current State: </span>
-                  <span className="font-bold text-slate-800">{selectedCase.status.replace(/_/g, ' ')}</span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Mark as Received button */}
-                  {selectedCase.status === 'SENT_TO_LAB' && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenReceiveModal(selectedCase)}
-                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                    >
-                      <Package className="w-3.5 h-3.5" />
-                      <span>Record Items Received from Lab</span>
-                    </button>
-                  )}
-
-                  {/* Mark as Ready for Handover button */}
-                  {selectedCase.status === 'RECEIVED_FROM_LAB' && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await api.patch(`/lab/cases/${selectedCase.id}/status`, {
-                          status: 'READY_FOR_HANDOVER',
-                        });
-                        refreshCaseDetails(selectedCase.id);
-                        fetchDashboard();
-                        fetchCases();
-                      }}
-                      className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                    >
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>Mark Ready for Patient Handover</span>
-                    </button>
-                  )}
-
-                  {/* Patient Handover Button */}
-                  {selectedCase.status !== 'HANDED_OVER' && selectedCase.status !== 'CANCELLED' && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenHandoverModal(selectedCase)}
-                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Record Patient Handover</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Handover Completed Notice */}
-              {selectedCase.status === 'HANDED_OVER' && selectedCase.handoverDate && (
-                <div className="p-3.5 bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs">
-                  <div className="flex items-center gap-2 font-bold text-emerald-800">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>
-                      Work Handed Over on {selectedCase.handoverDate.substring(0, 10)} to {selectedCase.patient.name} ({selectedCase.patient.patientCode})
-                    </span>
-                  </div>
-                  {selectedCase.handoverNotes && (
-                    <p className="mt-1 text-[11px] text-emerald-800 italic">
-                      Remarks: "{selectedCase.handoverNotes}"
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Patient & Laboratory Info Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Patient Card */}
-                <div className="p-3.5 bg-slate-50 border border-slate-200 space-y-1.5">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                    Patient Details
-                  </span>
-                  <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
-                    <span>{selectedCase.patient.name}</span>
-                    <span className="bg-slate-200 text-slate-700 font-mono text-[10px] px-1.5 py-0.2">
-                      {selectedCase.patient.patientCode}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-slate-600 space-y-0.5">
-                    <div>Mobile: {selectedCase.patient.mobile}</div>
-                    <div>
-                      {selectedCase.patient.gender} • {selectedCase.patient.age} yrs
-                    </div>
-                    {selectedCase.patient.medicalAlerts && (
-                      <div className="text-amber-700 font-bold">
-                        Alerts: {selectedCase.patient.medicalAlerts}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Laboratory Card */}
-                <div className="p-3.5 bg-slate-50 border border-slate-200 space-y-1.5">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                    Laboratory Details & Timeline
-                  </span>
-                  <div className="text-xs font-bold text-slate-900">{selectedCase.labName}</div>
-                  <div className="text-[11px] text-slate-600 space-y-0.5">
-                    {selectedCase.labRefNumber && (
-                      <div>Lab Ref / Order #: <span className="font-mono font-bold">{selectedCase.labRefNumber}</span></div>
-                    )}
-                    {selectedCase.labContact && <div>Contact: {selectedCase.labContact}</div>}
-                    {selectedCase.labPhone && <div>Phone: {selectedCase.labPhone}</div>}
-                    <div className="pt-1 flex items-center gap-3 text-[10px] text-slate-500">
-                      <span>Sent: <strong>{selectedCase.sentDate.substring(0, 10)}</strong></span>
-                      {selectedCase.expectedDate && (
-                        <span>Return Date: <strong>{selectedCase.expectedDate.substring(0, 10)}</strong></span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Dental Items Table */}
-              <div className="border border-slate-200">
-                <div className="p-2.5 bg-slate-100 border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-800 flex items-center justify-between">
-                  <span>Dental Items Ordered ({selectedCase.items?.length || 0})</span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold text-[10px] uppercase">
-                        <th className="py-2 px-3">Type</th>
-                        <th className="py-2 px-3">Tooth #</th>
-                        <th className="py-2 px-3">Material</th>
-                        <th className="py-2 px-3">Shade</th>
-                        <th className="py-2 px-3">Instructions</th>
-                        <th className="py-2 px-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {selectedCase.items?.map((it, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/50">
-                          <td className="py-2.5 px-3 font-bold text-slate-900">
-                            {it.itemType === 'OTHER' && it.customItemName
-                              ? it.customItemName
-                              : it.itemType}
-                          </td>
-                          <td className="py-2.5 px-3 font-semibold text-indigo-900 font-mono">
-                            {it.toothNumber}
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-700">{it.material || '—'}</td>
-                          <td className="py-2.5 px-3">
-                            {it.shade ? (
-                              <span className="px-1.5 py-0.5 bg-amber-50 text-amber-900 border border-amber-200 font-bold text-[10px]">
-                                {it.shade}
-                              </span>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-600 text-[11px] max-w-xs">
-                            {it.description || '—'}
-                          </td>
-                          <td className="py-2.5 px-3 whitespace-nowrap">
-                            {renderStatusBadge(it.status || selectedCase.status)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* General Notes if present */}
-              {selectedCase.generalNotes && (
-                <div className="p-3 bg-slate-50 border border-slate-200 text-xs">
-                  <span className="font-bold text-slate-700 block mb-1">General Notes:</span>
-                  <p className="text-slate-600 whitespace-pre-wrap">{selectedCase.generalNotes}</p>
-                </div>
-              )}
-
-              {/* ------------------------------------------------------------- */}
-              {/* LAB DOCUMENTS (PDF UPLOAD & PREVIEW)                          */}
-              {/* ------------------------------------------------------------- */}
+              {/* ATTACHED PDF DOCUMENTS */}
               <div className="border border-slate-200 p-4 space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-200">
                   <div className="flex items-center gap-2">
                     <FileText className="w-4 h-4 text-rose-600" />
                     <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
-                      Lab Documents (PDF Work Orders & Reports)
+                      Emailed PDF Report Files
                     </h4>
                     <span className="bg-rose-100 text-rose-800 text-[10px] font-bold px-1.5 py-0.2">
-                      {selectedCase.documents?.length || 0}
+                      {selectedReport.documents?.length || 0}
                     </span>
                   </div>
 
+                  {/* Add more PDFs button */}
                   <div>
                     <input
                       ref={docInputRef}
                       type="file"
                       accept="application/pdf,.pdf"
                       multiple
-                      onChange={handleUploadDocumentsModal}
+                      onChange={handleUploadAdditionalDocument}
                       className="hidden"
-                      id="doc-upload-input"
+                      id="modal-pdf-upload"
                     />
                     <label
-                      htmlFor="doc-upload-input"
-                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 transition cursor-pointer flex items-center gap-1.5"
+                      htmlFor="modal-pdf-upload"
+                      className="px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 transition cursor-pointer flex items-center gap-1.5"
                     >
                       <Upload className="w-3.5 h-3.5" />
-                      <span>{uploadingDoc ? 'Uploading...' : '+ Attach PDF'}</span>
+                      <span>{uploadingDoc ? 'Uploading...' : '+ Add Another PDF'}</span>
                     </label>
                   </div>
                 </div>
 
-                {selectedCase.documents && selectedCase.documents.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {selectedCase.documents.map((doc) => (
+                {selectedReport.documents && selectedReport.documents.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedReport.documents.map((doc) => (
                       <div
                         key={doc.id}
-                        className="p-2.5 bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
+                        className="p-3 bg-slate-50 border border-slate-200 flex items-center justify-between gap-3"
                       >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <FileText className="w-5 h-5 text-rose-600 shrink-0" />
+                        <div className="flex items-center gap-3 min-w-0">
+                          <FileText className="w-6 h-6 text-rose-600 shrink-0" />
                           <div className="truncate">
                             <p className="text-xs font-bold text-slate-800 truncate" title={doc.originalName}>
                               {doc.originalName}
                             </p>
                             <p className="text-[10px] text-slate-400">
-                              {formatBytes(doc.sizeBytes)} • {doc.uploadedAt ? doc.uploadedAt.substring(0, 10) : ''}
+                              {formatBytes(doc.sizeBytes)} • Uploaded {doc.uploadedAt ? doc.uploadedAt.substring(0, 10) : ''}
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1 shrink-0">
-                          {/* Preview PDF */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {/* Preview in browser */}
                           <a
                             href={`/api/lab/documents/${doc.id}/view`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white border border-transparent hover:border-slate-200 transition cursor-pointer"
-                            title="Preview PDF"
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                            title="Open & View PDF directly in browser"
                           >
                             <Eye className="w-3.5 h-3.5" />
+                            <span>View Fullscreen</span>
                           </a>
 
-                          {/* Download PDF */}
+                          {/* Download */}
                           <a
                             href={`/api/lab/documents/${doc.id}/download`}
                             download
-                            className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white border border-transparent hover:border-slate-200 transition cursor-pointer"
-                            title="Download PDF"
+                            className="p-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-bold transition cursor-pointer"
+                            title="Download PDF file"
                           >
                             <Download className="w-3.5 h-3.5" />
                           </a>
 
-                          {/* Delete Document */}
+                          {/* Delete */}
                           <button
                             type="button"
                             onClick={() => handleDeleteDocument(doc.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-white border border-transparent hover:border-slate-200 transition cursor-pointer"
-                            title="Delete Document"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                            title="Delete this PDF"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -2109,316 +1551,114 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400 italic py-1">
-                    No PDF documents attached yet. Click "+ Attach PDF" to upload work orders, invoices, or lab reports.
+                  <p className="text-xs text-slate-400 italic py-2">
+                    No PDF attached yet. Click "+ Add Another PDF" to upload the document received by email.
                   </p>
                 )}
               </div>
 
-              {/* ------------------------------------------------------------- */}
-              {/* RECEIVED ITEM PHOTOS (PHOTO UPLOAD & GALLERY)                 */}
-              {/* ------------------------------------------------------------- */}
-              <div className="border border-slate-200 p-4 space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                  <div className="flex items-center gap-2">
-                    <ImageIcon className="w-4 h-4 text-blue-600" />
-                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
-                      Received Dental Items – Photographs
-                    </h4>
-                    <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.2">
-                      {selectedCase.photos?.length || 0}
-                    </span>
-                  </div>
-
-                  <div>
-                    <input
-                      ref={photoInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/jpg"
-                      multiple
-                      onChange={handleUploadPhotosModal}
-                      className="hidden"
-                      id="photo-upload-input"
-                    />
-                    <label
-                      htmlFor="photo-upload-input"
-                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold border border-blue-200 transition cursor-pointer flex items-center gap-1.5"
+              {/* DOCTOR FINDINGS & NOTES (EDITABLE) */}
+              <div className="border border-slate-200 p-4 space-y-2">
+                <div className="flex items-center justify-between pb-1 border-b border-slate-200">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <Edit2 className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Doctor's Clinical Findings & Notes</span>
+                  </h4>
+                  {!isEditingNotes && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditableNotes(selectedReport.generalNotes || '');
+                        setIsEditingNotes(true);
+                      }}
+                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
                     >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>{uploadingPhoto ? 'Uploading...' : '+ Upload Photos'}</span>
-                    </label>
-                  </div>
+                      <Edit2 className="w-3 h-3" />
+                      <span>Edit Notes</span>
+                    </button>
+                  )}
                 </div>
 
-                {selectedCase.photos && selectedCase.photos.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {selectedCase.photos.map((photo) => (
-                      <div
-                        key={photo.id}
-                        className="bg-slate-50 border border-slate-200 overflow-hidden group flex flex-col justify-between"
+                {isEditingNotes ? (
+                  <div className="space-y-2 pt-1">
+                    <textarea
+                      rows={3}
+                      value={editableNotes}
+                      onChange={(e) => setEditableNotes(e.target.value)}
+                      placeholder="Doctor's findings, impressions, or notes..."
+                      className="w-full text-xs p-2.5 bg-white border border-indigo-400 focus:outline-hidden"
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingNotes(false)}
+                        className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
                       >
-                        <div
-                          className="relative aspect-square overflow-hidden bg-slate-900 cursor-pointer"
-                          onClick={() => setPreviewPhotoUrl(`/api/lab/photos/${photo.id}`)}
-                        >
-                          <img
-                            src={`/api/lab/photos/${photo.id}`}
-                            alt={photo.originalName}
-                            className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                          />
-                          <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                            <Eye className="w-5 h-5" />
-                          </div>
-                        </div>
-
-                        <div className="p-2 space-y-1">
-                          <p className="text-[11px] font-bold text-slate-800 truncate" title={photo.originalName}>
-                            {photo.originalName}
-                          </p>
-                          <div className="flex items-center justify-between text-[10px] text-slate-500">
-                            <span>{formatBytes(photo.sizeBytes)}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleDeletePhoto(photo.id)}
-                              className="text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                              title="Delete Photo"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
-                          {photo.notes && (
-                            <p className="text-[10px] text-slate-600 italic truncate" title={photo.notes}>
-                              {photo.notes}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveNotes}
+                        disabled={savingNotes}
+                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <Save className="w-3 h-3" />
+                        <span>{savingNotes ? 'Saving...' : 'Save Notes'}</span>
+                      </button>
+                    </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400 italic py-1">
-                    No received item photos uploaded yet. Click "+ Upload Photos" to attach pictures of crowns, bridges, or dentures received from the lab.
+                  <p className="text-xs text-slate-700 italic whitespace-pre-wrap py-1">
+                    {selectedReport.generalNotes || 'No clinical findings recorded for this report.'}
                   </p>
                 )}
               </div>
-            </div>
 
-            {/* Modal Footer */}
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
-              <button
-                type="button"
-                onClick={() => handleDeleteCase(selectedCase)}
-                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 transition cursor-pointer flex items-center gap-1.5"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete Case</span>
-              </button>
+              {/* MODAL FOOTER */}
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => handleDeleteReport(selectedReport)}
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 transition cursor-pointer flex items-center gap-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Report</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setIsDetailModalOpen(false)}
-                className="px-4 py-1.5 bg-white hover:bg-slate-100 text-slate-800 text-xs font-bold border border-slate-300 transition cursor-pointer"
-              >
-                Close
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDetailModalOpen(false);
+                    setSelectedReport(null);
+                  }}
+                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
-      {/* 5. MODAL: RECORD RECEIVED ITEMS FROM LAB                      */}
-      {/* ------------------------------------------------------------- */}
-      {isReceiveModalOpen && selectedCase && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-300 shadow-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                <Package className="w-4 h-4 text-amber-600" />
-                <span>Record Received from Laboratory</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsReceiveModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-600">
-              Confirm receiving dental fabrication from <strong>{selectedCase.labName}</strong> for patient{' '}
-              <strong>{selectedCase.patient.name}</strong> ({selectedCase.patient.patientCode}).
-            </p>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Actual Received Date <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={receiveDate}
-                  onChange={(e) => setReceiveDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 focus:border-amber-500 focus:outline-hidden"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Inspection Notes / Observations (Optional)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Fit verified on master model, shade matches A2 guide, margins sealed."
-                  value={receiveNotes}
-                  onChange={(e) => setReceiveNotes(e.target.value)}
-                  className="w-full p-2 bg-white border border-slate-300 focus:border-amber-500 focus:outline-hidden"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="makeReadyCheck"
-                  checked={makeReadyForHandover}
-                  onChange={(e) => setMakeReadyForHandover(e.target.checked)}
-                  className="w-4 h-4 text-indigo-600 border-slate-300 rounded-none cursor-pointer"
-                />
-                <label htmlFor="makeReadyCheck" className="text-xs font-bold text-slate-800 cursor-pointer">
-                  Mark status as "Ready for Patient Handover" immediately
-                </label>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => setIsReceiveModalOpen(false)}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition cursor-pointer"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={handleConfirmReceive}
-                disabled={receiveSubmitting}
-                className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-400 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
-              >
-                {receiveSubmitting ? 'Saving...' : 'Confirm Received'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------- */}
-      {/* 6. MODAL: RECORD PATIENT HANDOVER                             */}
-      {/* ------------------------------------------------------------- */}
-      {isHandoverModalOpen && selectedCase && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-300 shadow-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Record Patient Handover</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsHandoverModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-3 bg-emerald-50/70 border border-emerald-200 space-y-1 text-xs">
-              <p className="font-bold text-emerald-900">
-                Patient: {selectedCase.patient.name}
-              </p>
-              <p className="text-emerald-800 font-mono">
-                Patient ID: {selectedCase.patient.patientCode}
-              </p>
-              <div className="pt-1 text-[11px] text-emerald-700">
-                Item(s):{' '}
-                <strong>
-                  {selectedCase.items?.map((it) => `${it.itemType} (T:${it.toothNumber})`).join(', ') || 'Dental Appliance'}
-                </strong>
-              </div>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Actual Handover Date <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={handoverDate}
-                  onChange={(e) => setHandoverDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 focus:border-emerald-500 focus:outline-hidden"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Handover Remarks & Clinical Notes (Optional)
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="e.g. Delivered and cemented with RelyX luting cement. Occlusion checked, contact points verified. Patient comfortable and satisfied."
-                  value={handoverRemarks}
-                  onChange={(e) => setHandoverRemarks(e.target.value)}
-                  className="w-full p-2 bg-white border border-slate-300 focus:border-emerald-500 focus:outline-hidden"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => setIsHandoverModalOpen(false)}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition cursor-pointer"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={handleConfirmHandover}
-                disabled={handoverSubmitting}
-                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
-              >
-                {handoverSubmitting ? 'Recording...' : 'Confirm Handover'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------- */}
-      {/* 7. LIGHTBOX IMAGE PREVIEW MODAL                               */}
-      {/* ------------------------------------------------------------- */}
+      {/* LIGHTBOX FOR SCAN IMAGES (IF ANY) */}
       {previewPhotoUrl && (
         <div
-          className="fixed inset-0 z-60 bg-black/80 flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-60 bg-black/90 flex items-center justify-center p-4 cursor-pointer"
           onClick={() => setPreviewPhotoUrl(null)}
         >
           <div className="relative max-w-4xl max-h-[90vh]">
             <img
               src={previewPhotoUrl}
-              alt="Dental item photograph"
-              className="max-w-full max-h-[85vh] object-contain border border-slate-700 shadow-2xl"
+              alt="Scan Preview"
+              className="max-w-full max-h-[85vh] object-contain border border-slate-700"
             />
             <button
               type="button"
               onClick={() => setPreviewPhotoUrl(null)}
-              className="absolute -top-10 right-0 text-white hover:text-slate-300 font-bold text-sm flex items-center gap-1 cursor-pointer"
+              className="absolute top-2 right-2 px-3 py-1 bg-black/70 hover:bg-black text-white text-xs font-bold flex items-center gap-1"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
               <span>Close Preview</span>
             </button>
           </div>
@@ -2427,5 +1667,3 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
     </div>
   );
 };
-
-export default DentalLabModule;

@@ -50,17 +50,32 @@ async function generateLabCaseNumber(): Promise<string> {
 // -------------------------------------------------------------
 router.get('/dashboard', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const [totalCases, sentToLab, receivedFromLab, readyForHandover, handedOver] =
-      await Promise.all([
-        prisma.labCase.count(),
-        prisma.labCase.count({ where: { status: LabCaseStatus.SENT_TO_LAB } }),
-        prisma.labCase.count({ where: { status: LabCaseStatus.RECEIVED_FROM_LAB } }),
-        prisma.labCase.count({ where: { status: LabCaseStatus.READY_FOR_HANDOVER } }),
-        prisma.labCase.count({ where: { status: LabCaseStatus.HANDED_OVER } }),
-      ]);
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const [
+      totalCases,
+      reportsThisMonth,
+      reportsToday,
+      reportsWithPdf,
+      sentToLab,
+      receivedFromLab,
+      readyForHandover,
+      handedOver,
+    ] = await Promise.all([
+      prisma.labCase.count(),
+      prisma.labCase.count({ where: { sentDate: { gte: startOfMonth } } }),
+      prisma.labCase.count({ where: { sentDate: { gte: startOfToday } } }),
+      prisma.labCase.count({ where: { documents: { some: {} } } }),
+      prisma.labCase.count({ where: { status: LabCaseStatus.SENT_TO_LAB } }),
+      prisma.labCase.count({ where: { status: LabCaseStatus.RECEIVED_FROM_LAB } }),
+      prisma.labCase.count({ where: { status: LabCaseStatus.READY_FOR_HANDOVER } }),
+      prisma.labCase.count({ where: { status: LabCaseStatus.HANDED_OVER } }),
+    ]);
 
     const recentCases = await prisma.labCase.findMany({
-      take: 6,
+      take: 8,
       orderBy: { createdAt: 'desc' },
       include: {
         patient: {
@@ -69,9 +84,21 @@ router.get('/dashboard', authenticateToken, async (req: Request, res: Response) 
             patientCode: true,
             name: true,
             mobile: true,
+            age: true,
+            gender: true,
           },
         },
         items: true,
+        documents: {
+          select: {
+            id: true,
+            filename: true,
+            originalName: true,
+            mimeType: true,
+            sizeBytes: true,
+            uploadedAt: true,
+          },
+        },
         _count: {
           select: {
             documents: true,
@@ -85,6 +112,10 @@ router.get('/dashboard', authenticateToken, async (req: Request, res: Response) 
       success: true,
       counts: {
         totalCases,
+        totalReports: totalCases,
+        reportsThisMonth,
+        reportsToday,
+        reportsWithPdf,
         sentToLab,
         receivedFromLab,
         readyForHandover,
@@ -107,6 +138,7 @@ router.get('/cases', authenticateToken, async (req: Request, res: Response) => {
       search,
       status,
       itemType,
+      testType,
       labName,
       patientId,
       startDate,
@@ -138,6 +170,17 @@ router.get('/cases', authenticateToken, async (req: Request, res: Response) => {
       };
     }
 
+    if (testType && String(testType).trim() && String(testType) !== 'ALL') {
+      where.items = {
+        some: {
+          customItemName: {
+            contains: String(testType).trim(),
+            mode: 'insensitive',
+          },
+        },
+      };
+    }
+
     if (startDate || endDate) {
       where.sentDate = {};
       if (startDate) {
@@ -156,6 +199,7 @@ router.get('/cases', authenticateToken, async (req: Request, res: Response) => {
         { caseNumber: { contains: q, mode: 'insensitive' } },
         { labName: { contains: q, mode: 'insensitive' } },
         { labRefNumber: { contains: q, mode: 'insensitive' } },
+        { generalNotes: { contains: q, mode: 'insensitive' } },
         {
           patient: {
             OR: [
@@ -316,12 +360,12 @@ router.get('/cases/:id', authenticateToken, async (req: Request, res: Response) 
 });
 
 // -------------------------------------------------------------
-// 4. CREATE LAB CASE
+// 4. CREATE LAB CASE / REPORT
 // -------------------------------------------------------------
 const createLabItemSchema = z.object({
-  itemType: z.nativeEnum(LabItemType).default(LabItemType.CROWN),
+  itemType: z.nativeEnum(LabItemType).default(LabItemType.OTHER),
   customItemName: z.string().optional().nullable(),
-  toothNumber: z.string().min(1, 'Tooth number is required'),
+  toothNumber: z.string().optional().default('N/A'),
   material: z.string().optional().nullable(),
   shade: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
@@ -330,7 +374,7 @@ const createLabItemSchema = z.object({
 const createLabCaseSchema = z.object({
   patientId: z.string().min(1, 'Patient is required'),
   appointmentId: z.string().optional().nullable(),
-  labName: z.string().min(1, 'Laboratory name is required'),
+  labName: z.string().optional().nullable().default('Diagnostic Laboratory'),
   labContact: z.string().optional().nullable(),
   labPhone: z.string().optional().nullable(),
   labEmail: z.string().optional().nullable(),
@@ -338,7 +382,9 @@ const createLabCaseSchema = z.object({
   sentDate: z.string().optional(),
   expectedDate: z.string().optional().nullable(),
   generalNotes: z.string().optional().nullable(),
-  items: z.array(createLabItemSchema).min(1, 'At least one dental item must be specified'),
+  testType: z.string().optional().nullable(),
+  status: z.nativeEnum(LabCaseStatus).optional().default(LabCaseStatus.RECEIVED_FROM_LAB),
+  items: z.array(createLabItemSchema).optional().default([]),
 });
 
 router.post('/cases', authenticateToken, async (req: AuthRequest, res: Response) => {
@@ -354,32 +400,48 @@ router.post('/cases', authenticateToken, async (req: AuthRequest, res: Response)
     }
 
     const caseNumber = await generateLabCaseNumber();
+    const finalLabName = parsed.labName?.trim() || 'Diagnostic Laboratory';
+    const testTitle = parsed.testType?.trim() || 'Diagnostic Lab Report';
+    const caseStatus = parsed.status || LabCaseStatus.RECEIVED_FROM_LAB;
+
+    const itemsToCreate = (parsed.items && parsed.items.length > 0)
+      ? parsed.items.map((item) => ({
+          itemType: item.itemType || LabItemType.OTHER,
+          customItemName: item.customItemName?.trim() || testTitle,
+          toothNumber: item.toothNumber?.trim() || 'N/A',
+          material: item.material?.trim() || null,
+          shade: item.shade?.trim() || null,
+          description: item.description?.trim() || parsed.generalNotes?.trim() || null,
+          status: caseStatus,
+        }))
+      : [{
+          itemType: LabItemType.OTHER,
+          customItemName: testTitle,
+          toothNumber: 'N/A',
+          material: null,
+          shade: null,
+          description: parsed.generalNotes?.trim() || null,
+          status: caseStatus,
+        }];
 
     const newCase = await prisma.labCase.create({
       data: {
         caseNumber,
         patientId: parsed.patientId,
         appointmentId: parsed.appointmentId || null,
-        labName: parsed.labName.trim(),
+        labName: finalLabName,
         labContact: parsed.labContact?.trim() || null,
         labPhone: parsed.labPhone?.trim() || null,
         labEmail: parsed.labEmail?.trim() || null,
         labRefNumber: parsed.labRefNumber?.trim() || null,
-        status: LabCaseStatus.SENT_TO_LAB,
+        status: caseStatus,
         sentDate: parsed.sentDate ? new Date(parsed.sentDate) : new Date(),
+        receivedDate: new Date(),
         expectedDate: parsed.expectedDate ? new Date(parsed.expectedDate) : null,
         generalNotes: parsed.generalNotes?.trim() || null,
         createdById: req.user?.id || null,
         items: {
-          create: parsed.items.map((item) => ({
-            itemType: item.itemType,
-            customItemName: item.customItemName?.trim() || null,
-            toothNumber: item.toothNumber.trim(),
-            material: item.material?.trim() || null,
-            shade: item.shade?.trim() || null,
-            description: item.description?.trim() || null,
-            status: LabCaseStatus.SENT_TO_LAB,
-          })),
+          create: itemsToCreate,
         },
       },
       include: {
@@ -399,7 +461,7 @@ router.post('/cases', authenticateToken, async (req: AuthRequest, res: Response)
 
     res.status(201).json({
       success: true,
-      message: `Lab case ${newCase.caseNumber} registered successfully`,
+      message: `Lab report ${newCase.caseNumber} recorded successfully`,
       case: newCase,
     });
   } catch (err: any) {
@@ -426,6 +488,7 @@ router.put('/cases/:id', authenticateToken, async (req: Request, res: Response) 
       sentDate,
       expectedDate,
       generalNotes,
+      testType,
       items,
     } = req.body;
 
@@ -450,9 +513,9 @@ router.put('/cases/:id', authenticateToken, async (req: Request, res: Response) 
         await tx.labItem.createMany({
           data: items.map((item: any) => ({
             labCaseId: id,
-            itemType: item.itemType || LabItemType.CROWN,
+            itemType: item.itemType || LabItemType.OTHER,
             customItemName: item.customItemName?.trim() || null,
-            toothNumber: String(item.toothNumber || '').trim(),
+            toothNumber: String(item.toothNumber || 'N/A').trim(),
             material: item.material?.trim() || null,
             shade: item.shade?.trim() || null,
             description: item.description?.trim() || null,
@@ -460,6 +523,14 @@ router.put('/cases/:id', authenticateToken, async (req: Request, res: Response) 
             receivedDate: item.receivedDate ? new Date(item.receivedDate) : existing.receivedDate,
             handoverDate: item.handoverDate ? new Date(item.handoverDate) : existing.handoverDate,
           })),
+        });
+      } else if (testType && existing.items.length > 0) {
+        await tx.labItem.update({
+          where: { id: existing.items[0].id },
+          data: {
+            customItemName: String(testType).trim(),
+            description: generalNotes !== undefined ? (generalNotes?.trim() || null) : existing.items[0].description,
+          },
         });
       }
 
