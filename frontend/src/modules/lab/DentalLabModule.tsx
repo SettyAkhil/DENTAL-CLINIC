@@ -1522,7 +1522,7 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Expected Return Date (Optional)
+                    Return Date (Optional)
                   </label>
                   <input
                     type="date"
@@ -1953,7 +1953,7 @@ export const DentalLabModule: React.FC<DentalLabModuleProps> = ({
                     <div className="pt-1 flex items-center gap-3 text-[10px] text-slate-500">
                       <span>Sent: <strong>{selectedCase.sentDate.substring(0, 10)}</strong></span>
                       {selectedCase.expectedDate && (
-                        <span>Expected: <strong>{selectedCase.expectedDate.substring(0, 10)}</strong></span>
+                        <span>Return Date: <strong>{selectedCase.expectedDate.substring(0, 10)}</strong></span>
                       )}
                     </div>
                   </div>
