@@ -83,7 +83,9 @@ export function App() {
     if (tab === 'operations-procedures') return 'Operations: Procedures & Treatments';
     if (tab === 'operations-history') return 'Operations: Clinical & Treatment History';
     if (tab === 'clinical-notes') return '9-Field Clinical Notes';
-    if (tab === 'dental-lab') return 'Dental Lab Work & Cases';
+    if (tab === 'dental-lab' || tab === 'dental-lab-dashboard') return 'Dental Lab: Overview & Dashboard';
+    if (tab === 'dental-lab-reports') return 'Dental Lab: Patient Lab Reports';
+    if (tab === 'dental-lab-create') return 'Dental Lab: Add Lab Report';
     return tab.replace('-', ' ');
   };
 
@@ -183,8 +185,20 @@ export function App() {
                 }}
               />
             )}
-            {activeTab === 'dental-lab' && (
+            {activeTab.startsWith('dental-lab') && (
               <DentalLabModule
+                initialSubModule={
+                  activeTab === 'dental-lab-reports'
+                    ? 'reports'
+                    : activeTab === 'dental-lab-create'
+                    ? 'create'
+                    : 'dashboard'
+                }
+                onSubModuleChange={(sm) => {
+                  if (sm === 'reports') setActiveTab('dental-lab-reports');
+                  else if (sm === 'create') setActiveTab('dental-lab-create');
+                  else setActiveTab('dental-lab-dashboard');
+                }}
                 onNavigateToPatient={(patientId) => {
                   if (patientId) setSelectedPatientNav(patientId);
                   setActiveTab('patients');
