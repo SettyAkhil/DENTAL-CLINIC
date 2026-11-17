@@ -9,6 +9,7 @@ import { ClinicalNotesModule } from './modules/clinical-notes/ClinicalNotesModul
 import { ConsultationBillingModule } from './modules/billing/ConsultationBillingModule';
 import { PharmacyModule } from './modules/pharmacy/PharmacyModule';
 import { OperationsModule } from './modules/operations/OperationsModule';
+import { DentalLabModule } from './modules/lab/DentalLabModule';
 import { ReportsModule } from './modules/reports/ReportsModule';
 import { AdminModule } from './modules/admin/AdminModule';
 import { User } from './types';
@@ -82,6 +83,7 @@ export function App() {
     if (tab === 'operations-procedures') return 'Operations: Procedures & Treatments';
     if (tab === 'operations-history') return 'Operations: Clinical & Treatment History';
     if (tab === 'clinical-notes') return '9-Field Clinical Notes';
+    if (tab === 'dental-lab') return 'Dental Lab Work & Cases';
     return tab.replace('-', ' ');
   };
 
@@ -178,6 +180,14 @@ export function App() {
                 onNavigateToBillingProcedure={(proc) => {
                   setPendingProcedureToBill(proc);
                   setActiveTab('billing');
+                }}
+              />
+            )}
+            {activeTab === 'dental-lab' && (
+              <DentalLabModule
+                onNavigateToPatient={(patientId) => {
+                  if (patientId) setSelectedPatientNav(patientId);
+                  setActiveTab('patients');
                 }}
               />
             )}

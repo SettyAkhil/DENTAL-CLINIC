@@ -124,6 +124,7 @@ model Patient {
   consultationBills ConsultationBill[]
   pharmacySales   PharmacySale[]
   procedures      Procedure[]
+  labCases        LabCase[]
 
   @@index([mobile])
   @@index([patientCode])
@@ -152,6 +153,7 @@ model Appointment {
 
   clinicalNote    ClinicalNote?
   consultationBill ConsultationBill?
+  labCases        LabCase[]
 
   @@index([doctorId, appointmentDate])
   @@index([patientId])
@@ -484,5 +486,116 @@ model StockMovement {
   timestamp      DateTime @default(now())
 
   @@index([medicineId, timestamp])
+}
+
+// ==============================================================
+// Dental Lab Work Management Module
+// ==============================================================
+
+enum LabCaseStatus {
+  SENT_TO_LAB
+  RECEIVED_FROM_LAB
+  READY_FOR_HANDOVER
+  HANDED_OVER
+  CANCELLED
+}
+
+enum LabItemType {
+  CROWN
+  BRIDGE
+  DENTURE
+  VENEER
+  RETAINER
+  SPLINT
+  OTHER
+}
+
+model LabCase {
+  id              String        @id @default(uuid())
+  caseNumber      String        @unique // LAB-2026-00001
+  patientId       String
+  patient         Patient       @relation(fields: [patientId], references: [id])
+  appointmentId   String?
+  appointment     Appointment?  @relation(fields: [appointmentId], references: [id])
+  
+  // External laboratory details
+  labName         String
+  labContact      String?
+  labPhone        String?
+  labEmail        String?
+  labRefNumber    String?
+
+  // Status & Timeline
+  status          LabCaseStatus @default(SENT_TO_LAB)
+  sentDate        DateTime      @default(now())
+  expectedDate    DateTime?
+  receivedDate    DateTime?
+  handoverDate    DateTime?
+  handoverNotes   String?
+
+  generalNotes    String?
+  createdById     String?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  items           LabItem[]
+  documents       LabDocument[]
+  photos          LabPhoto[]
+
+  @@index([patientId])
+  @@index([status])
+  @@index([sentDate])
+}
+
+model LabItem {
+  id              String        @id @default(uuid())
+  labCaseId       String
+  labCase         LabCase       @relation(fields: [labCaseId], references: [id], onDelete: Cascade)
+  itemType        LabItemType   @default(CROWN)
+  customItemName  String?
+  toothNumber     String        // e.g. "16" or "11-13"
+  material        String?       // e.g. "Zirconia Multi-layer", "PFM", "E-Max"
+  shade           String?       // e.g. "A2", "B1"
+  description     String?       // Work instructions & notes
+  status          LabCaseStatus @default(SENT_TO_LAB)
+  receivedDate    DateTime?
+  handoverDate    DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([labCaseId])
+}
+
+model LabDocument {
+  id              String        @id @default(uuid())
+  labCaseId       String
+  labCase         LabCase       @relation(fields: [labCaseId], references: [id], onDelete: Cascade)
+  filename        String
+  originalName    String
+  mimeType        String        @default("application/pdf")
+  sizeBytes       Int
+  fileData        Bytes?
+  fileUrl         String?
+  uploadedAt      DateTime      @default(now())
+
+  @@index([labCaseId])
+}
+
+model LabPhoto {
+  id              String        @id @default(uuid())
+  labCaseId       String
+  labCase         LabCase       @relation(fields: [labCaseId], references: [id], onDelete: Cascade)
+  filename        String
+  originalName    String
+  mimeType        String
+  sizeBytes       Int
+  photoData       Bytes?
+  photoUrl        String?
+  notes           String?
+  receivedDate    DateTime?
+  uploadedAt      DateTime      @default(now())
+
+  @@index([labCaseId])
 }
 

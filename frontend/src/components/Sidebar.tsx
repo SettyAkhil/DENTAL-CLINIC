@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Stethoscope,
   History,
+  FlaskConical,
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -69,6 +70,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Scissors,
       hasSubModules: true,
     },
+    { id: 'dental-lab', label: 'Dental Lab', icon: FlaskConical },
     { id: 'reports', label: 'Reports & Analytics', icon: BarChart3 },
     ...(user.role === 'ADMIN' ? [{ id: 'admin', label: 'Admin: Manage Users', icon: ShieldCheck }] : []),
   ];
