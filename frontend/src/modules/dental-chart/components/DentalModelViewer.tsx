@@ -32,6 +32,7 @@ export const DentalModelViewer: React.FC<DentalModelViewerProps> = ({
   const controlsRef = useRef<OrbitControls | null>(null);
   const teethMapRef = useRef<Map<number, THREE.Mesh>>(new Map());
   const highlightGroupRef = useRef<THREE.Group | null>(null);
+  const selectedOutlineRef = useRef<THREE.Mesh | null>(null);
 
   // Callout 2D Screen Position
   const [calloutPos, setCalloutPos] = useState<{ x: number; y: number; visible: boolean }>({
@@ -63,26 +64,26 @@ export const DentalModelViewer: React.FC<DentalModelViewerProps> = ({
 
     switch (view) {
       case 'front':
-        camera.position.set(0, 0.1, 8.8);
+        camera.position.set(0, 0.0, 8.4);
         controls.target.set(0, 0, 0);
         break;
       case 'right':
-        camera.position.set(8.2, 0.2, 2.0);
+        camera.position.set(7.8, 0.1, 1.8);
         controls.target.set(0, 0, 0);
         break;
       case 'left':
-        camera.position.set(-8.2, 0.2, 2.0);
+        camera.position.set(-7.8, 0.1, 1.8);
         controls.target.set(0, 0, 0);
         break;
       case 'upper':
-        // Front-inferior view looking up at maxillary occlusal tables
-        camera.position.set(0, -4.2, 5.5);
-        controls.target.set(0, 0.6, 0);
+        // Direct occlusal mirror view of the maxillary arch & palate
+        camera.position.set(0, -1.2, 5.8);
+        controls.target.set(0, 1.45, 0.1);
         break;
       case 'lower':
-        // Front-superior view looking down at mandibular occlusal tables
-        camera.position.set(0, 4.2, 5.5);
-        controls.target.set(0, -0.6, 0);
+        // Direct occlusal mirror view of the mandibular arch & tongue
+        camera.position.set(0, 1.2, 5.8);
+        controls.target.set(0, -1.45, 0.1);
         break;
     }
     controls.update();
@@ -302,24 +303,27 @@ export const DentalModelViewer: React.FC<DentalModelViewerProps> = ({
 
   // Update Tooth Materials (Selected highlight + Condition colors)
   useEffect(() => {
-    // 1. Update Highlight Outline Group
-    if (highlightGroupRef.current) {
-      highlightGroupRef.current.clear();
-      const selectedMesh = teethMapRef.current.get(selectedFDI);
-      if (selectedMesh) {
-        // Glowing cyan outline wireframe matching reference
-        const wireMat = new THREE.MeshBasicMaterial({
-          color: 0x00f0ff,
-          wireframe: true,
-          transparent: true,
-          opacity: 0.85,
-        });
-        const outlineMesh = new THREE.Mesh(selectedMesh.geometry, wireMat);
-        outlineMesh.position.copy(selectedMesh.position);
-        outlineMesh.rotation.copy(selectedMesh.rotation);
-        outlineMesh.scale.copy(selectedMesh.scale).multiplyScalar(1.06);
-        highlightGroupRef.current.add(outlineMesh);
-      }
+    // 1. Update Highlight Outline attached directly to the selected tooth
+    if (selectedOutlineRef.current) {
+      selectedOutlineRef.current.parent?.remove(selectedOutlineRef.current);
+      selectedOutlineRef.current.geometry.dispose();
+      selectedOutlineRef.current = null;
+    }
+
+    const selectedMesh = teethMapRef.current.get(selectedFDI);
+    if (selectedMesh) {
+      // Glowing cyan outline wireframe matching reference
+      const wireMat = new THREE.MeshBasicMaterial({
+        color: 0x00f0ff,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.85,
+        depthTest: true,
+      });
+      const outlineMesh = new THREE.Mesh(selectedMesh.geometry, wireMat);
+      outlineMesh.scale.set(1.05, 1.05, 1.05);
+      selectedMesh.add(outlineMesh);
+      selectedOutlineRef.current = outlineMesh;
     }
 
     // 2. Update Teeth Enamel Materials
