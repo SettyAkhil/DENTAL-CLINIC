@@ -63,19 +63,26 @@ export const DentalModelViewer: React.FC<DentalModelViewerProps> = ({
 
     switch (view) {
       case 'front':
-        camera.position.set(0, 0.2, 9.2);
+        camera.position.set(0, 0.1, 8.8);
+        controls.target.set(0, 0, 0);
         break;
       case 'right':
-        camera.position.set(9.0, 0.4, 2.5);
+        camera.position.set(8.2, 0.2, 2.0);
+        controls.target.set(0, 0, 0);
         break;
       case 'left':
-        camera.position.set(-9.0, 0.4, 2.5);
+        camera.position.set(-8.2, 0.2, 2.0);
+        controls.target.set(0, 0, 0);
         break;
       case 'upper':
-        camera.position.set(0, 7.8, 4.2);
+        // Front-inferior view looking up at maxillary occlusal tables
+        camera.position.set(0, -4.2, 5.5);
+        controls.target.set(0, 0.6, 0);
         break;
       case 'lower':
-        camera.position.set(0, -7.8, 4.2);
+        // Front-superior view looking down at mandibular occlusal tables
+        camera.position.set(0, 4.2, 5.5);
+        controls.target.set(0, -0.6, 0);
         break;
     }
     controls.update();
