@@ -208,13 +208,23 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
 });
 
 // Enhanced Clinical Examination Schema (Sub-module 1)
+const selectedToothItemSchema = z.object({
+  quadrant: z.enum(['UR', 'UL', 'LL', 'LR']),
+  position: z.number().int().min(1).max(8),
+  fdi: z.number().int(),
+  dentition: z.enum(['permanent', 'primary']).optional().nullable(),
+});
+
 const clinicalFindingItemSchema = z.object({
   finding: z.string().min(1, 'Finding is required'),
   toothNumber: z.string().optional().nullable(),
+  selectedTeeth: z.array(selectedToothItemSchema).optional().nullable(),
+  teeth: z.array(z.union([z.string(), z.number()])).optional().nullable(),
+  chartType: z.enum(['permanent', 'primary']).optional().nullable(),
   severity: z.string().optional().nullable(), // 'Mild' | 'Moderate' | 'Severe'
   details: z.string().optional().nullable(),
   observations: z.string().optional().nullable(),
-});
+}).passthrough();
 
 const recommendedTreatmentItemSchema = z.object({
   treatment: z.string().min(1, 'Treatment is required'),
