@@ -54,9 +54,22 @@ export interface Appointment {
   consultationBill?: ConsultationBill | null;
 }
 
+export type QuadrantType = 'UR' | 'UL' | 'LL' | 'LR';
+export type DentitionType = 'permanent' | 'primary';
+
+export interface SelectedTooth {
+  quadrant: QuadrantType;
+  position: number;
+  fdi: number;
+  dentition?: DentitionType;
+}
+
 export interface ClinicalFinding {
   finding: string;
   toothNumber?: string | null;
+  selectedTeeth?: SelectedTooth[] | null;
+  teeth?: (string | number)[] | null;
+  chartType?: DentitionType | null;
   severity?: 'Mild' | 'Moderate' | 'Severe' | string | null;
   details?: string | null;
   observations?: string | null;

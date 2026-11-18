@@ -16,11 +16,13 @@ import {
   Layers,
 } from 'lucide-react';
 import api from '../../services/api';
-import { Patient, Doctor, ClinicalFinding, RecommendedTreatment } from '../../types';
+import { Patient, Doctor, ClinicalFinding, RecommendedTreatment, ClinicalNote, DentitionType } from '../../types';
 import { PatientSearchSelect } from '../../components/PatientSearchSelect';
+import { ToothQuadrantSelector, SelectedTooth, parseToothValue } from '../../components/ToothQuadrantSelector';
 
 interface ClinicalExaminationSubModuleProps {
   initialPatient?: Patient | null;
+  initialNote?: ClinicalNote | null;
   onNavigateToProcedures?: (patient: Patient) => void;
   onNavigateToHistory?: (patient: Patient) => void;
 }
@@ -73,15 +75,16 @@ export const COMMON_TREATMENTS = [
 
 export const ClinicalExaminationSubModule: React.FC<ClinicalExaminationSubModuleProps> = ({
   initialPatient = null,
+  initialNote = null,
   onNavigateToProcedures,
   onNavigateToHistory,
 }) => {
   // SECTION 1: Patient Complaint
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(initialPatient);
   const [visitDate, setVisitDate] = useState<string>(new Date().toISOString().substring(0, 10));
-  const [selectedComplaints, setSelectedComplaints] = useState<string[]>(['Tooth Pain']);
+  const [selectedComplaints, setSelectedComplaints] = useState<string[]>([]);
   const [customComplaint, setCustomComplaint] = useState('');
-  const [durationOfComplaint, setDurationOfComplaint] = useState('2-3 days');
+  const [durationOfComplaint, setDurationOfComplaint] = useState('');
   const [patientDescription, setPatientDescription] = useState('');
 
   // SECTION 2: Consulting Doctor
@@ -90,27 +93,11 @@ export const ClinicalExaminationSubModule: React.FC<ClinicalExaminationSubModule
   const [consultationDate, setConsultationDate] = useState<string>(new Date().toISOString().substring(0, 10));
 
   // SECTION 3: Clinical Examination & Findings
-  const [findingsList, setFindingsList] = useState<ClinicalFinding[]>([
-    {
-      finding: 'Dental Caries',
-      toothNumber: '',
-      severity: 'Moderate',
-      details: '',
-      observations: '',
-    },
-  ]);
+  const [findingsList, setFindingsList] = useState<ClinicalFinding[]>([]);
   const [customFindingInput, setCustomFindingInput] = useState('');
 
   // SECTION 4: Recommended Treatment
-  const [treatmentsList, setTreatmentsList] = useState<RecommendedTreatment[]>([
-    {
-      treatment: 'Root Canal Treatment (RCT)',
-      priority: 'High',
-      advice: 'Maintain oral hygiene; avoid chewing hard foods on affected side.',
-      plannedDate: '',
-      followUpDate: '',
-    },
-  ]);
+  const [treatmentsList, setTreatmentsList] = useState<RecommendedTreatment[]>([]);
   const [customTreatmentInput, setCustomTreatmentInput] = useState('');
   const [generalNotes, setGeneralNotes] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
@@ -127,9 +114,6 @@ export const ClinicalExaminationSubModule: React.FC<ClinicalExaminationSubModule
         const res = await api.get('/reports/doctors');
         if (res.data.success && res.data.doctors.length > 0) {
           setDoctors(res.data.doctors);
-          if (!selectedDoctorId) {
-            setSelectedDoctorId(res.data.doctors[0].id);
-          }
         }
       } catch (err) {
         console.error('Failed to load doctors:', err);
@@ -144,6 +128,46 @@ export const ClinicalExaminationSubModule: React.FC<ClinicalExaminationSubModule
       setSelectedPatient(initialPatient);
     }
   }, [initialPatient]);
+
+  // Load existing clinical note when editing
+  useEffect(() => {
+    if (initialNote) {
+      if (initialNote.patient) setSelectedPatient(initialNote.patient);
+      if (initialNote.consultationDate) {
+        const d = new Date(initialNote.consultationDate);
+        if (!isNaN(d.getTime())) {
+          setVisitDate(d.toISOString().substring(0, 10));
+          setConsultationDate(d.toISOString().substring(0, 10));
+        }
+      }
+      if (initialNote.doctorId) setSelectedDoctorId(initialNote.doctorId);
+      if (initialNote.durationOfComplaint) setDurationOfComplaint(initialNote.durationOfComplaint);
+      if (initialNote.patientDescription) setPatientDescription(initialNote.patientDescription);
+      if (initialNote.notes) setGeneralNotes(initialNote.notes);
+      if (initialNote.followUpDate) {
+        const fd = new Date(initialNote.followUpDate);
+        if (!isNaN(fd.getTime())) {
+          setFollowUpDate(fd.toISOString().substring(0, 10));
+        }
+      }
+      if (initialNote.chiefComplaints) {
+        const complaints = initialNote.chiefComplaints.split(',').map((c) => c.trim()).filter(Boolean);
+        setSelectedComplaints(complaints);
+      }
+      if (initialNote.clinicalFindings && Array.isArray(initialNote.clinicalFindings)) {
+        setFindingsList(
+          initialNote.clinicalFindings.map((f: any) => ({
+            ...f,
+            selectedTeeth: f.selectedTeeth || parseToothValue(f.toothNumber),
+            toothNumber: f.toothNumber || '',
+          }))
+        );
+      }
+      if (initialNote.recommendedTreatments && Array.isArray(initialNote.recommendedTreatments)) {
+        setTreatmentsList(initialNote.recommendedTreatments);
+      }
+    }
+  }, [initialNote]);
 
   // Selected doctor object
   const currentDoctor = doctors.find((d) => d.id === selectedDoctorId);
@@ -166,12 +190,14 @@ export const ClinicalExaminationSubModule: React.FC<ClinicalExaminationSubModule
   };
 
   // SECTION 3 Handlers: Findings
-  const addFinding = (name: string) => {
+  const addFinding = (name: string = '') => {
     setFindingsList([
       ...findingsList,
       {
         finding: name,
         toothNumber: '',
+        selectedTeeth: [],
+        teeth: [],
         severity: 'Moderate',
         details: '',
         observations: '',
@@ -185,12 +211,25 @@ export const ClinicalExaminationSubModule: React.FC<ClinicalExaminationSubModule
     setFindingsList(updated);
   };
 
+  const handleToothSelectionChange = (
+    idx: number,
+    selectedTeeth: SelectedTooth[],
+    fdiString: string,
+    chartType: DentitionType
+  ) => {
+    const updated = [...findingsList];
+    updated[idx] = {
+      ...updated[idx],
+      selectedTeeth,
+      toothNumber: fdiString,
+      teeth: selectedTeeth.map((t) => t.fdi),
+      chartType,
+    };
+    setFindingsList(updated);
+  };
+
   const removeFinding = (index: number) => {
-    if (findingsList.length === 1) {
-      setFindingsList([{ finding: 'Dental Caries', toothNumber: '', severity: 'Moderate', details: '', observations: '' }]);
-    } else {
-      setFindingsList(findingsList.filter((_, i) => i !== index));
-    }
+    setFindingsList(findingsList.filter((_, i) => i !== index));
   };
 
   // SECTION 4 Handlers: Recommended Treatments
@@ -214,28 +253,21 @@ export const ClinicalExaminationSubModule: React.FC<ClinicalExaminationSubModule
   };
 
   const removeTreatment = (index: number) => {
-    if (treatmentsList.length === 1) {
-      setTreatmentsList([{ treatment: 'Dental Scaling', priority: 'Normal', advice: '', plannedDate: '', followUpDate: '' }]);
-    } else {
-      setTreatmentsList(treatmentsList.filter((_, i) => i !== index));
-    }
+    setTreatmentsList(treatmentsList.filter((_, i) => i !== index));
   };
 
   const handleResetForm = () => {
     if (window.confirm('Reset all fields in this clinical examination form?')) {
       setSelectedPatient(null);
       setVisitDate(new Date().toISOString().substring(0, 10));
-      setSelectedComplaints(['Tooth Pain']);
+      setSelectedComplaints([]);
       setCustomComplaint('');
-      setDurationOfComplaint('2-3 days');
+      setDurationOfComplaint('');
       setPatientDescription('');
+      setSelectedDoctorId('');
       setConsultationDate(new Date().toISOString().substring(0, 10));
-      setFindingsList([
-        { finding: 'Dental Caries', toothNumber: '', severity: 'Moderate', details: '', observations: '' },
-      ]);
-      setTreatmentsList([
-        { treatment: 'Root Canal Treatment (RCT)', priority: 'High', advice: '', plannedDate: '', followUpDate: '' },
-      ]);
+      setFindingsList([]);
+      setTreatmentsList([]);
       setGeneralNotes('');
       setFollowUpDate('');
       setFormError(null);
@@ -273,20 +305,27 @@ export const ClinicalExaminationSubModule: React.FC<ClinicalExaminationSubModule
         chiefComplaints: selectedComplaints.length > 0 ? selectedComplaints : ['Routine Evaluation'],
         durationOfComplaint: durationOfComplaint.trim() || null,
         patientDescription: patientDescription.trim() || null,
-        clinicalFindings: findingsList.map((f) => ({
-          finding: f.finding.trim(),
-          toothNumber: f.toothNumber?.trim() || null,
-          severity: f.severity || 'Moderate',
-          details: f.details?.trim() || null,
-          observations: f.observations?.trim() || null,
-        })),
-        recommendedTreatments: treatmentsList.map((t) => ({
-          treatment: t.treatment.trim(),
-          priority: t.priority || 'Normal',
-          advice: t.advice?.trim() || null,
-          plannedDate: t.plannedDate || null,
-          followUpDate: t.followUpDate || null,
-        })),
+        clinicalFindings: findingsList
+          .filter((f) => f.finding.trim())
+          .map((f) => ({
+            finding: f.finding.trim(),
+            toothNumber: f.toothNumber?.trim() || null,
+            selectedTeeth: f.selectedTeeth && f.selectedTeeth.length > 0 ? f.selectedTeeth : null,
+            teeth: f.selectedTeeth && f.selectedTeeth.length > 0 ? f.selectedTeeth.map((t) => t.fdi) : null,
+            chartType: f.chartType || null,
+            severity: f.severity || 'Moderate',
+            details: f.details?.trim() || null,
+            observations: f.observations?.trim() || null,
+          })),
+        recommendedTreatments: treatmentsList
+          .filter((t) => t.treatment.trim())
+          .map((t) => ({
+            treatment: t.treatment.trim(),
+            priority: t.priority || 'Normal',
+            advice: t.advice?.trim() || null,
+            plannedDate: t.plannedDate || null,
+            followUpDate: t.followUpDate || null,
+          })),
         followUpDate: followUpDate || null,
         notes: generalNotes.trim() || null,
         advice: treatmentsList.map((t) => t.advice).filter(Boolean).join('; ') || null,
@@ -591,7 +630,7 @@ export const ClinicalExaminationSubModule: React.FC<ClinicalExaminationSubModule
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">Department / Specialization</label>
                 <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-indigo-700">
-                  {currentDoctor?.specialization || 'DENTAL'}
+                  {currentDoctor?.specialization || '—'}
                 </div>
               </div>
             </div>
@@ -679,83 +718,90 @@ export const ClinicalExaminationSubModule: React.FC<ClinicalExaminationSubModule
                 Recorded Clinical Findings ({findingsList.length})
               </label>
 
-              {findingsList.map((f, idx) => (
-                <div
-                  key={idx}
-                  className="p-4 bg-slate-50/80 rounded-xl border border-slate-200 space-y-3 relative transition hover:border-slate-300"
-                >
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
-                    <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-md bg-blue-100 text-blue-700 text-[10px] font-black flex items-center justify-center">
-                        {idx + 1}
-                      </span>
-                      <input
-                        type="text"
-                        value={f.finding}
-                        onChange={(e) => updateFinding(idx, 'finding', e.target.value)}
-                        placeholder="Finding / Observed Problem"
-                        className="text-xs font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200 w-64"
-                        required
-                      />
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => removeFinding(idx)}
-                      className="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                      title="Remove finding"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Affected Area / Tooth # (Manual entry)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Tooth #14, Lower Left"
-                        value={f.toothNumber || ''}
-                        onChange={(e) => updateFinding(idx, 'toothNumber', e.target.value)}
-                        className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Severity</label>
-                      <select
-                        value={f.severity || 'Moderate'}
-                        onChange={(e) => updateFinding(idx, 'severity', e.target.value)}
-                        className="w-full text-xs font-semibold p-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden"
-                      >
-                        <option value="Mild">Mild</option>
-                        <option value="Moderate">Moderate</option>
-                        <option value="Severe">Severe</option>
-                      </select>
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Examination Details & Clinical Observations
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Deep cavity on occlusal surface, tenderness on vertical percussion..."
-                        value={f.details || ''}
-                        onChange={(e) => updateFinding(idx, 'details', e.target.value)}
-                        className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden"
-                      />
-                    </div>
-                  </div>
+              {findingsList.length === 0 ? (
+                <div className="p-5 bg-slate-50/80 rounded-xl border border-dashed border-slate-200 text-center">
+                  <p className="text-xs font-semibold text-slate-600">No clinical findings added yet</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Click a quick-add chip above or enter a custom finding to record examination observations.</p>
                 </div>
-              ))}
+              ) : (
+                findingsList.map((f, idx) => (
+                  <div
+                    key={idx}
+                    className="p-4 bg-slate-50/80 rounded-xl border border-slate-200 space-y-3 relative transition hover:border-slate-300"
+                  >
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-md bg-blue-100 text-blue-700 text-[10px] font-black flex items-center justify-center">
+                          {idx + 1}
+                        </span>
+                        <input
+                          type="text"
+                          value={f.finding}
+                          onChange={(e) => updateFinding(idx, 'finding', e.target.value)}
+                          placeholder="Finding / Observed Problem"
+                          className="text-xs font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200 w-64"
+                          required
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeFinding(idx)}
+                        className="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                        title="Remove finding"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Interactive Four-Quadrant Dental Tooth Selector */}
+                    <div className="pt-1">
+                      <ToothQuadrantSelector
+                        value={f.selectedTeeth && f.selectedTeeth.length > 0 ? f.selectedTeeth : f.toothNumber}
+                        patientAge={selectedPatient?.age}
+                        patientDob={selectedPatient?.dob}
+                        initialChartType={f.chartType}
+                        onChange={(selectedTeeth, fdiString, chartType) =>
+                          handleToothSelectionChange(idx, selectedTeeth, fdiString, chartType)
+                        }
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-1">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Severity</label>
+                        <select
+                          value={f.severity || 'Moderate'}
+                          onChange={(e) => updateFinding(idx, 'severity', e.target.value)}
+                          className="w-full text-xs font-semibold p-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden"
+                        >
+                          <option value="Mild">Mild</option>
+                          <option value="Moderate">Moderate</option>
+                          <option value="Severe">Severe</option>
+                        </select>
+                      </div>
+
+                      <div className="md:col-span-3">
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          Examination Details & Clinical Observations
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Deep cavity on occlusal surface, tenderness on vertical percussion..."
+                          value={f.details || ''}
+                          onChange={(e) => updateFinding(idx, 'details', e.target.value)}
+                          className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
 
             <button
               type="button"
-              onClick={() => addFinding('Dental Caries')}
+              onClick={() => addFinding('')}
               className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -843,81 +889,88 @@ export const ClinicalExaminationSubModule: React.FC<ClinicalExaminationSubModule
                 Recommended Treatments Plan ({treatmentsList.length})
               </label>
 
-              {treatmentsList.map((t, idx) => (
-                <div
-                  key={idx}
-                  className="p-4 bg-slate-50/80 rounded-xl border border-slate-200 space-y-3 relative transition hover:border-slate-300"
-                >
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
-                    <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-black flex items-center justify-center">
-                        {idx + 1}
-                      </span>
-                      <input
-                        type="text"
-                        value={t.treatment}
-                        onChange={(e) => updateTreatment(idx, 'treatment', e.target.value)}
-                        placeholder="Treatment Name"
-                        className="text-xs font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200 w-64"
-                        required
-                      />
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => removeTreatment(idx)}
-                      className="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                      title="Remove treatment"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Priority</label>
-                      <select
-                        value={t.priority || 'Normal'}
-                        onChange={(e) => updateTreatment(idx, 'priority', e.target.value)}
-                        className="w-full text-xs font-semibold p-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden"
-                      >
-                        <option value="Immediate">Immediate / Urgent</option>
-                        <option value="High">High Priority</option>
-                        <option value="Normal">Normal</option>
-                        <option value="Low">Low Priority</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Planned Date (Optional)</label>
-                      <input
-                        type="date"
-                        value={t.plannedDate || ''}
-                        onChange={(e) => updateTreatment(idx, 'plannedDate', e.target.value)}
-                        className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden"
-                      />
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Treatment Advice & Instructions
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Schedule root canal therapy; start antibiotics and analgesics..."
-                        value={t.advice || ''}
-                        onChange={(e) => updateTreatment(idx, 'advice', e.target.value)}
-                        className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden"
-                      />
-                    </div>
-                  </div>
+              {treatmentsList.length === 0 ? (
+                <div className="p-5 bg-slate-50/80 rounded-xl border border-dashed border-slate-200 text-center">
+                  <p className="text-xs font-semibold text-slate-600">No recommended treatments added yet</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Click a quick-add chip above or enter a custom treatment to record recommendations.</p>
                 </div>
-              ))}
+              ) : (
+                treatmentsList.map((t, idx) => (
+                  <div
+                    key={idx}
+                    className="p-4 bg-slate-50/80 rounded-xl border border-slate-200 space-y-3 relative transition hover:border-slate-300"
+                  >
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-black flex items-center justify-center">
+                          {idx + 1}
+                        </span>
+                        <input
+                          type="text"
+                          value={t.treatment}
+                          onChange={(e) => updateTreatment(idx, 'treatment', e.target.value)}
+                          placeholder="Treatment Name"
+                          className="text-xs font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200 w-64"
+                          required
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeTreatment(idx)}
+                        className="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                        title="Remove treatment"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Priority</label>
+                        <select
+                          value={t.priority || 'Normal'}
+                          onChange={(e) => updateTreatment(idx, 'priority', e.target.value)}
+                          className="w-full text-xs font-semibold p-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden"
+                        >
+                          <option value="Immediate">Immediate / Urgent</option>
+                          <option value="High">High Priority</option>
+                          <option value="Normal">Normal</option>
+                          <option value="Low">Low Priority</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Planned Date (Optional)</label>
+                        <input
+                          type="date"
+                          value={t.plannedDate || ''}
+                          onChange={(e) => updateTreatment(idx, 'plannedDate', e.target.value)}
+                          className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          Treatment Advice & Instructions
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Schedule root canal therapy; start antibiotics and analgesics..."
+                          value={t.advice || ''}
+                          onChange={(e) => updateTreatment(idx, 'advice', e.target.value)}
+                          className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
 
             <button
               type="button"
-              onClick={() => addTreatment('Dental Scaling')}
+              onClick={() => addTreatment('')}
               className="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
