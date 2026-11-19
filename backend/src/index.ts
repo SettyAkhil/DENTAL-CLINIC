@@ -18,6 +18,7 @@ import pharmacyRoutes from './modules/pharmacy/pharmacy.routes';
 import operationRoutes from './modules/operations/operations.routes';
 import reportsRoutes from './modules/reports/reports.routes';
 import dentalChartRoutes from './modules/dental-chart/dental-chart.routes';
+import labRoutes from './modules/lab/lab.routes';
 
 dotenv.config();
 
@@ -37,7 +38,8 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use(morgan('dev'));
 
 // API Routes
@@ -50,6 +52,7 @@ app.use('/api/billing/consultation', consultationBillingRoutes);
 app.use('/api/billing/procedure', operationBillingRoutes);
 app.use('/api/pharmacy', pharmacyRoutes);
 app.use('/api/procedures', operationRoutes);
+app.use('/api/lab', labRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/dental-chart', dentalChartRoutes);
 

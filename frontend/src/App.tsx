@@ -9,6 +9,7 @@ import { ClinicalNotesModule } from './modules/clinical-notes/ClinicalNotesModul
 import { ConsultationBillingModule } from './modules/billing/ConsultationBillingModule';
 import { PharmacyModule } from './modules/pharmacy/PharmacyModule';
 import { OperationsModule } from './modules/operations/OperationsModule';
+import { DentalLabModule } from './modules/lab/DentalLabModule';
 import { ReportsModule } from './modules/reports/ReportsModule';
 import { AdminModule } from './modules/admin/AdminModule';
 import { DentalChartModule } from './modules/dental-chart/DentalChartModule';
@@ -87,6 +88,9 @@ export function App() {
     if (tab === 'operations-procedures') return 'Operations: Procedures & Treatments';
     if (tab === 'operations-history') return 'Operations: Clinical & Treatment History';
     if (tab === 'clinical-notes') return '9-Field Clinical Notes';
+    if (tab === 'dental-lab' || tab === 'dental-lab-dashboard') return 'Dental Lab: Overview & Dashboard';
+    if (tab === 'dental-lab-reports') return 'Dental Lab: Patient Lab Reports';
+    if (tab === 'dental-lab-create') return 'Dental Lab: Add Lab Report';
     return tab.replace('-', ' ');
   };
 
@@ -193,6 +197,26 @@ export function App() {
                 onNavigateToBillingProcedure={(proc) => {
                   setPendingProcedureToBill(proc);
                   setActiveTab('billing');
+                }}
+              />
+            )}
+            {activeTab.startsWith('dental-lab') && (
+              <DentalLabModule
+                initialSubModule={
+                  activeTab === 'dental-lab-reports'
+                    ? 'reports'
+                    : activeTab === 'dental-lab-create'
+                    ? 'create'
+                    : 'dashboard'
+                }
+                onSubModuleChange={(sm) => {
+                  if (sm === 'reports') setActiveTab('dental-lab-reports');
+                  else if (sm === 'create') setActiveTab('dental-lab-create');
+                  else setActiveTab('dental-lab-dashboard');
+                }}
+                onNavigateToPatient={(patientId) => {
+                  if (patientId) setSelectedPatientNav(patientId);
+                  setActiveTab('patients');
                 }}
               />
             )}

@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   Stethoscope,
   History,
+  FlaskConical,
+  PlusCircle,
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -30,11 +32,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   user,
 }) => {
   const [operationsExpanded, setOperationsExpanded] = useState(true);
+  const [labExpanded, setLabExpanded] = useState(true);
 
-  // Auto-expand operations sub-menu when any operations tab is active
+  // Auto-expand sub-menus when any matching tab is active
   useEffect(() => {
     if (activeTab.startsWith('operations')) {
       setOperationsExpanded(true);
+    }
+    if (activeTab.startsWith('dental-lab')) {
+      setLabExpanded(true);
     }
   }, [activeTab]);
 
@@ -56,7 +62,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
-  const menuItems = [
+  const labSubItems = [
+    {
+      id: 'dental-lab-dashboard',
+      label: 'Lab Dashboard & Overview',
+      icon: Activity,
+    },
+    {
+      id: 'dental-lab-reports',
+      label: 'All Patient Lab Reports',
+      icon: FileText,
+    },
+    {
+      id: 'dental-lab-create',
+      label: 'Add Lab Report',
+      icon: PlusCircle,
+    },
+  ];
+
+  const menuItems: Array<{
+    id: string;
+    label: string;
+    icon: any;
+    hasSubModules?: boolean;
+    subItems?: Array<{ id: string; label: string; icon: any }>;
+    isExpanded?: boolean;
+    setExpanded?: (val: boolean) => void;
+    defaultTab?: string;
+    activePrefix?: string;
+  }> = [
     { id: 'dashboard', label: 'Reception Dashboard', icon: Activity },
     { id: 'patients', label: 'Patient Directory', icon: Users },
     { id: 'appointments', label: 'Appointments & Slots', icon: Calendar },
@@ -69,6 +103,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Operations & Procedures',
       icon: Scissors,
       hasSubModules: true,
+      subItems: operationsSubItems,
+      isExpanded: operationsExpanded,
+      setExpanded: setOperationsExpanded,
+      defaultTab: 'operations-examination',
+      activePrefix: 'operations',
+    },
+    {
+      id: 'dental-lab',
+      label: 'Dental Lab',
+      icon: FlaskConical,
+      hasSubModules: true,
+      subItems: labSubItems,
+      isExpanded: labExpanded,
+      setExpanded: setLabExpanded,
+      defaultTab: 'dental-lab-dashboard',
+      activePrefix: 'dental-lab',
     },
     { id: 'reports', label: 'Reports & Analytics', icon: BarChart3 },
     ...(user.role === 'ADMIN' ? [{ id: 'admin', label: 'Admin: Manage Users', icon: ShieldCheck }] : []),
@@ -96,22 +146,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {menuItems.map((item) => {
           const Icon = item.icon;
 
-          // Special rendering for Operations & Procedures with its 3 sub-modules
-          if (item.hasSubModules) {
-            const isOperationsActive = activeTab.startsWith('operations');
+          // Special rendering for Modules with sub-modules (Operations and Dental Lab)
+          if (item.hasSubModules && item.subItems) {
+            const isGroupActive = activeTab.startsWith(item.activePrefix || item.id);
+            const isExpanded = item.isExpanded ?? true;
 
             return (
               <div key={item.id} className="space-y-1">
                 {/* Parent Module Item */}
                 <div
                   onClick={() => {
-                    if (!isOperationsActive) {
-                      setActiveTab('operations-examination');
+                    if (!isGroupActive && item.defaultTab) {
+                      setActiveTab(item.defaultTab);
                     }
-                    setOperationsExpanded(!operationsExpanded);
+                    if (item.setExpanded) {
+                      item.setExpanded(!isExpanded);
+                    }
                   }}
                   className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    isOperationsActive
+                    isGroupActive
                       ? 'bg-slate-200/90 text-slate-900 font-bold border border-slate-300/70 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
@@ -119,7 +172,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <div className="flex items-center gap-3">
                     <Icon
                       className={`w-4 h-4 transition-colors ${
-                        isOperationsActive ? 'text-blue-600' : 'text-slate-500'
+                        isGroupActive ? 'text-blue-600' : 'text-slate-500'
                       }`}
                     />
                     <span>{item.label}</span>
@@ -129,12 +182,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setOperationsExpanded(!operationsExpanded);
+                      if (item.setExpanded) {
+                        item.setExpanded(!isExpanded);
+                      }
                     }}
                     className="p-1 hover:bg-slate-300/60 rounded text-slate-500 cursor-pointer"
-                    title={operationsExpanded ? 'Collapse sub-modules' : 'Expand sub-modules'}
+                    title={isExpanded ? 'Collapse sub-modules' : 'Expand sub-modules'}
                   >
-                    {operationsExpanded ? (
+                    {isExpanded ? (
                       <ChevronDown className="w-3.5 h-3.5 stroke-[2.5]" />
                     ) : (
                       <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -142,14 +197,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </button>
                 </div>
 
-                {/* 3 Sub-Modules Navigation List */}
-                {operationsExpanded && (
+                {/* Sub-Modules Navigation List */}
+                {isExpanded && (
                   <div className="ml-3 pl-2.5 border-l-2 border-blue-200/80 space-y-1 py-1 animate-in fade-in slide-in-from-top-1 duration-150">
-                    {operationsSubItems.map((sub) => {
+                    {item.subItems.map((sub) => {
                       const SubIcon = sub.icon;
                       const isSubActive =
                         activeTab === sub.id ||
-                        (activeTab === 'operations' && sub.id === 'operations-examination');
+                        (activeTab === item.id && sub.id === item.defaultTab);
 
                       return (
                         <button

@@ -54,9 +54,22 @@ export interface Appointment {
   consultationBill?: ConsultationBill | null;
 }
 
+export type QuadrantType = 'UR' | 'UL' | 'LL' | 'LR';
+export type DentitionType = 'permanent' | 'primary';
+
+export interface SelectedTooth {
+  quadrant: QuadrantType;
+  position: number;
+  fdi: number;
+  dentition?: DentitionType;
+}
+
 export interface ClinicalFinding {
   finding: string;
   toothNumber?: string | null;
+  selectedTeeth?: SelectedTooth[] | null;
+  teeth?: (string | number)[] | null;
+  chartType?: DentitionType | null;
   severity?: 'Mild' | 'Moderate' | 'Severe' | string | null;
   details?: string | null;
   observations?: string | null;
@@ -213,5 +226,88 @@ export interface VisitHistoryRecord {
   prescriptions: any[];
   prescribedMedications?: PrescribedMedication[];
   appointment?: Appointment | null;
+}
+
+// Dental Lab Work Types
+export type LabCaseStatus =
+  | 'SENT_TO_LAB'
+  | 'RECEIVED_FROM_LAB'
+  | 'READY_FOR_HANDOVER'
+  | 'HANDED_OVER'
+  | 'CANCELLED';
+
+export type LabItemType =
+  | 'CROWN'
+  | 'BRIDGE'
+  | 'DENTURE'
+  | 'VENEER'
+  | 'RETAINER'
+  | 'SPLINT'
+  | 'OTHER';
+
+export interface LabItem {
+  id?: string;
+  labCaseId?: string;
+  itemType: LabItemType;
+  customItemName?: string | null;
+  toothNumber: string;
+  material?: string | null;
+  shade?: string | null;
+  description?: string | null;
+  status?: LabCaseStatus;
+  receivedDate?: string | null;
+  handoverDate?: string | null;
+}
+
+export interface LabDocument {
+  id: string;
+  labCaseId: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+}
+
+export interface LabPhoto {
+  id: string;
+  labCaseId: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  notes?: string | null;
+  receivedDate?: string | null;
+  uploadedAt: string;
+}
+
+export interface LabCase {
+  id: string;
+  caseNumber: string;
+  patientId: string;
+  patient: Patient;
+  appointmentId?: string | null;
+  appointment?: Appointment | null;
+  labName: string;
+  labContact?: string | null;
+  labPhone?: string | null;
+  labEmail?: string | null;
+  labRefNumber?: string | null;
+  status: LabCaseStatus;
+  sentDate: string;
+  expectedDate?: string | null;
+  receivedDate?: string | null;
+  handoverDate?: string | null;
+  handoverNotes?: string | null;
+  generalNotes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: LabItem[];
+  documents: LabDocument[];
+  photos: LabPhoto[];
+  _count?: {
+    documents: number;
+    photos: number;
+  };
 }
 
