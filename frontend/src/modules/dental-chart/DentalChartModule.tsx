@@ -138,6 +138,15 @@ export const DentalChartModule: React.FC<DentalChartModuleProps> = ({
 
   const selectedToothObj = getToothByFDI(selectedFDI) || ADULT_TEETH[2]; // Default to Tooth 16
 
+  useEffect(() => {
+    (window as unknown as { __selectToothFDI?: (fdi: number) => void }).__selectToothFDI = (fdi: number) => {
+      setSelectedFDI(fdi);
+    };
+    return () => {
+      delete (window as unknown as { __selectToothFDI?: unknown }).__selectToothFDI;
+    };
+  }, []);
+
   return (
     <div className="w-full min-h-screen bg-[#F5F8FC] flex flex-col font-sans antialiased text-slate-800 select-none overflow-x-hidden">
       {/* 1. Top Dental Charting Header */}
@@ -151,46 +160,48 @@ export const DentalChartModule: React.FC<DentalChartModuleProps> = ({
       />
 
       {/* Main Container */}
-      <main className="flex-1 w-full max-w-[1720px] mx-auto p-4 sm:p-6 flex flex-col gap-5">
-        {/* 2. Main 3D / 2D Dental Visualization + Right Tooth Inspection Panel */}
-        <section className="flex flex-col lg:flex-row gap-5 items-stretch">
-          {/* Left: 3D Model Viewer OR 2D Odontogram */}
-          {viewMode === '3D' ? (
-            <DentalModelViewer
-              selectedFDI={selectedFDI}
-              onSelectTooth={setSelectedFDI}
+      <main className="flex-1 w-full max-w-[1540px] mx-auto p-4 sm:p-6">
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-5 items-start">
+          {/* Left Column: 3D/2D Viewer + Dental Chart Summary directly below (16–20px gap) */}
+          <div className="flex-1 min-w-0 w-full flex flex-col gap-4 sm:gap-5">
+            {/* Main 3D Dental Visualization OR 2D Odontogram */}
+            {viewMode === '3D' ? (
+              <DentalModelViewer
+                selectedFDI={selectedFDI}
+                onSelectTooth={setSelectedFDI}
+                findings={findings}
+              />
+            ) : (
+              <DentalChart2D
+                selectedFDI={selectedFDI}
+                onSelectTooth={setSelectedFDI}
+                findings={findings}
+              />
+            )}
+
+            {/* Dental Chart Summary directly below the main viewer */}
+            <DentalChartSummary
               findings={findings}
-            />
-          ) : (
-            <DentalChart2D
-              selectedFDI={selectedFDI}
               onSelectTooth={setSelectedFDI}
-              findings={findings}
+              onDeleteFinding={handleDeleteFinding}
             />
-          )}
+          </div>
 
-          {/* Right: Tooth Inspection Panel */}
-          <ToothInspectionPanel
-            tooth={selectedToothObj}
-            onSelectTooth={setSelectedFDI}
-            onClose={() => {}}
-            patientId={selectedPatient?.id || ''}
-            onSaveFinding={handleSaveFinding}
-            toothHistory={toothHistory}
-            isLoadingHistory={loadingToothHistory}
-          />
-        </section>
+          {/* Right Column: Tooth Inspection Panel + Findings Legend directly below */}
+          <div className="w-full lg:w-[430px] shrink-0 flex flex-col gap-4 sm:gap-5">
+            <ToothInspectionPanel
+              tooth={selectedToothObj}
+              onSelectTooth={setSelectedFDI}
+              onClose={() => {}}
+              patientId={selectedPatient?.id || ''}
+              onSaveFinding={handleSaveFinding}
+              toothHistory={toothHistory}
+              isLoadingHistory={loadingToothHistory}
+            />
 
-        {/* 3. Bottom Row: Dental Chart Summary (Left) + Findings Legend (Right) */}
-        <section className="flex flex-col lg:flex-row gap-5 items-stretch">
-          <DentalChartSummary
-            findings={findings}
-            onSelectTooth={setSelectedFDI}
-            onDeleteFinding={handleDeleteFinding}
-          />
-
-          <FindingsLegend />
-        </section>
+            <FindingsLegend />
+          </div>
+        </div>
       </main>
     </div>
   );

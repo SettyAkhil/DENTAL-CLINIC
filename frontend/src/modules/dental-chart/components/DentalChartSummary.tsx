@@ -14,7 +14,7 @@ export const DentalChartSummary: React.FC<DentalChartSummaryProps> = ({
   onDeleteFinding,
 }) => {
   return (
-    <div className="flex-1 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm select-none flex flex-col justify-between">
+    <div className="w-full bg-white border border-slate-200 rounded-3xl p-5 shadow-sm select-none flex flex-col justify-between">
       <div>
         {/* Card Header matching reference image */}
         <div className="flex items-center gap-2 mb-3">

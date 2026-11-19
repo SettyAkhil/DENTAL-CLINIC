@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  X,
   ChevronLeft,
   ChevronRight,
   Plus,
@@ -21,7 +20,7 @@ import { ToothPreview3D } from './ToothPreview3D';
 interface ToothInspectionPanelProps {
   tooth: ToothDefinition;
   onSelectTooth: (fdi: number) => void;
-  onClose: () => void;
+  onClose?: () => void;
   patientId: string;
   onSaveFinding: (finding: {
     toothNumber: number;
@@ -116,21 +115,13 @@ export const ToothInspectionPanel: React.FC<ToothInspectionPanelProps> = ({
   return (
     <div className="w-full lg:w-[430px] bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col gap-4 select-none shrink-0 transition-all">
       {/* 1. Panel Header */}
-      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+      <div className="flex items-center border-b border-slate-100 pb-3">
         <div className="flex items-center gap-2 text-teal-700">
           <svg className="w-5 h-5 text-teal-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M7 3c-3 1-4 5-2 9 1 2 1 9 4 9 2 0 1-6 3-6s1 6 3 6c3 0 3-7 4-9 2-4 1-8-2-9-2-1-3 1-5 1S9 2 7 3Z" />
           </svg>
           <h2 className="text-base font-bold text-slate-900 tracking-tight">Tooth Inspection</h2>
         </div>
-
-        <button
-          onClick={onClose}
-          className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
-          title="Close Inspection Panel"
-        >
-          <X className="w-5 h-5" />
-        </button>
       </div>
 
       {/* 2. Tooth Header with Previous / Next Buttons */}
@@ -197,7 +188,7 @@ export const ToothInspectionPanel: React.FC<ToothInspectionPanelProps> = ({
       {activeTab === 'Surface' && (
         <div className="flex flex-col gap-4">
           {/* Surface Inspection Row: 3D Tooth Canvas on Left + Surface Buttons on Right */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
             {/* Left: 3D Tooth Preview */}
             <ToothPreview3D
               tooth={tooth}

@@ -220,3 +220,36 @@ export function getAdjacentToothFDI(currentFDI: number, direction: 'prev' | 'nex
     return idx < ADULT_TEETH.length - 1 ? ADULT_TEETH[idx + 1].fdi : ADULT_TEETH[0].fdi;
   }
 }
+
+export const UPPER_TEETH_FDI = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
+export const LOWER_TEETH_FDI = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
+
+export function getNavigatedFDI(currentFDI: number, direction: 'left' | 'right' | 'up' | 'down'): number {
+  const uIdx = UPPER_TEETH_FDI.indexOf(currentFDI);
+  const lIdx = LOWER_TEETH_FDI.indexOf(currentFDI);
+
+  if (uIdx !== -1) {
+    switch (direction) {
+      case 'left':
+        return uIdx > 0 ? UPPER_TEETH_FDI[uIdx - 1] : UPPER_TEETH_FDI[0];
+      case 'right':
+        return uIdx < UPPER_TEETH_FDI.length - 1 ? UPPER_TEETH_FDI[uIdx + 1] : UPPER_TEETH_FDI[UPPER_TEETH_FDI.length - 1];
+      case 'down':
+        return LOWER_TEETH_FDI[uIdx];
+      case 'up':
+        return currentFDI;
+    }
+  } else if (lIdx !== -1) {
+    switch (direction) {
+      case 'left':
+        return lIdx > 0 ? LOWER_TEETH_FDI[lIdx - 1] : LOWER_TEETH_FDI[0];
+      case 'right':
+        return lIdx < LOWER_TEETH_FDI.length - 1 ? LOWER_TEETH_FDI[lIdx + 1] : LOWER_TEETH_FDI[LOWER_TEETH_FDI.length - 1];
+      case 'up':
+        return UPPER_TEETH_FDI[lIdx];
+      case 'down':
+        return currentFDI;
+    }
+  }
+  return currentFDI;
+}
